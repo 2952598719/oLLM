@@ -5,6 +5,12 @@ import org.apache.ibatis.annotations.Mapper;
 @Mapper
 public interface UserMapper {
 
-    boolean isEmailExist(String email);
+    Boolean isEmailExist(String email);
+
+    void register(Long userId, String email, String password);
+
+    String getPassword(String email);
+
+    Long getUserId(String email);
 
 }

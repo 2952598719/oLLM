@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="top.orosirian.mapper.OpenAiMapper">
+
+    <resultMap id="ChatResponseDTO" type="top.orosirian.model.Response.ChatResponseDTO">
+        <id property="chatId" column="id"/>
+        <result property="title" column="title"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <resultMap id="MessageResponseDTO" type="top.orosirian.model.Response.MessageResponseDTO">
+        <id property="messageId" column="id"/>
+        <result property="role" column="role"/>
+        <result property="content" column="content"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <select id="getChatList" resultMap="ChatResponseDTO">
+        SELECT id, title, updated_at
+        FROM ollm.public.chats
+        WHERE user_id = #{userId}
+    </select>
+
+    <insert id="createChat">
+        INSERT
+        INTO ollm.public.chats(id, user_id, title)
+        VALUES(#{chatId}, #{userId}, #{title})
+    </insert>
+
+    <select id="isChatBelong" resultType="java.lang.Boolean">
+        SELECT COUNT(1)
+        FROM ollm.public.chats
+        WHERE id = #{chatId} AND user_id = #{userId}
+    </select>
+
+    <update id="deleteChat">
+        UPDATE ollm.public.chats
+        SET status = 0
+        WHERE id = #{chatId}
+    </update>
+
+    <select id="getMessageList" resultMap="MessageResponseDTO">
+        SELECT id, role, content, created_at
+        FROM ollm.public.messages
+        WHERE chat_id = #{chatId}
+        ORDER BY created_at LIMIT 50    -- 更合理的是总结摘要，用LIMIT会截断
+    </select>
+
+    <insert id="insertMessage">
+        INSERT
+        INTO ollm.public.messages(id, chat_id, role, content)
+        VALUES (#{messageId}, #{chatId}, #{role}, #{content})
+    </insert>
+
+
+</mapper>

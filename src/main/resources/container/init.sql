@@ -6,22 +6,23 @@ CREATE DATABASE ollm ENCODING 'UTF8';
 
 DROP TABLE IF EXISTS users;
 CREATE TABLE users (
-    id BIGSERIAL PRIMARY KEY,
+    id BIGINT PRIMARY KEY,
     email VARCHAR(255) NOT NULL,
     password VARCHAR(255) NOT NULL,
+    status SMALLINT NOT NULL DEFAULT 1 CHECK ( status IN (0, 1) ),  -- 0表示已删除，1表示活跃
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 COMMENT ON COLUMN users.id IS '用户id';
-INSERT INTO users (email, password) VALUES ('2952598719@qq.com', 'aa111111');
+INSERT INTO users (id, email, password) VALUES (1951998471364022272, '2952598719@qq.com', '$2a$10$/nrRnnPgLpIAot.ofO5Z7.sfZdTYqhN7/dmKU6kqxGxnZG5ypxVEq');   -- aa111111
 
 
 DROP TABLE IF EXISTS chats;
 CREATE TABLE chats (
-    id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL REFERENCES users(id),
+    id BIGINT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
     title VARCHAR(255) NOT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+    status SMALLINT NOT NULL DEFAULT 1 CHECK ( status IN (0, 1) ),  -- 0表示已删除，1表示活跃
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
@@ -33,11 +34,11 @@ COMMENT ON COLUMN chats.status IS '会话状态';
 
 DROP TABLE IF EXISTS messages;
 CREATE TABLE messages (
-    id SERIAL PRIMARY KEY,
-    chat_id INT NOT NULL REFERENCES chats(id),
+    id BIGINT PRIMARY KEY,
+    chat_id BIGINT NOT NULL,
     role VARCHAR(20) NOT NULL CHECK (role IN ('system', 'assistant', 'user')),
     content TEXT NOT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+    status SMALLINT NOT NULL DEFAULT 1 CHECK ( status IN (0, 1) ),  -- 0表示已删除，1表示活跃
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );

@@ -4,7 +4,25 @@
 
     <select id="isEmailExist" resultType="java.lang.Boolean">
         SELECT COUNT(1)
-        FROM oai.public.users
+        FROM ollm.public.users
+        WHERE email = #{email}
+    </select>
+
+    <select id="getPassword" resultType="java.lang.String">
+        SELECT password
+        FROM ollm.public.users
+        WHERE email = #{email}
+    </select>
+
+    <insert id="register">
+        INSERT
+        INTO ollm.public.users(id, email, password)
+        VALUES(#{id}, #{email}, #{password})
+    </insert>
+
+    <select id="getUserId" resultType="java.lang.Long">
+        SELECT id
+        FROM ollm.public.users
         WHERE email = #{email}
     </select>
 

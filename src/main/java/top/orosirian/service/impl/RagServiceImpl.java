@@ -15,8 +15,6 @@ import org.springframework.core.io.PathResource;
 import org.springframework.stereotype.Service;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.multipart.MultipartFile;
-import top.orosirian.entity.Response;
-import top.orosirian.entity.enums.HttpStatus;
 import top.orosirian.service.inf.IRAGService;
 
 import java.io.File;
@@ -39,17 +37,12 @@ public class RagServiceImpl implements IRAGService {
     private PgVectorStore pgVectorStore;
 
     @Override
-    public Response<List<String>> queryRagTagList() {
-        RList<String> elements = redissonClient.getList("ragTag");
-        return Response.<List<String>>builder()
-                .code(HttpStatus.OK.getCode())
-                .info("调用成功")
-                .data(elements)
-                .build();
+    public List<String> queryRagTagList() {
+        return redissonClient.getList("ragTag");
     }
 
     @Override
-    public Response<String> uploadFile(String ragTag, List<MultipartFile> files) {
+    public boolean uploadFile(String ragTag, List<MultipartFile> files) {
         log.info("上传知识库开始 {}", ragTag);
         for (MultipartFile file : files) {
             TikaDocumentReader documentReader = new TikaDocumentReader(file.getResource());
@@ -67,14 +60,11 @@ public class RagServiceImpl implements IRAGService {
             }
         }
         log.info("上传知识库结束 {}", ragTag);
-        return Response.<String>builder()
-                .code(HttpStatus.OK.getCode())
-                .info("调用成功")
-                .build();
+        return true;
     }
 
     @Override
-    public Response<String> analyzeGitRepository(@RequestParam String repoUrl, @RequestParam String userName, @RequestParam String token) throws Exception {
+    public boolean analyzeGitRepository(@RequestParam String repoUrl, @RequestParam String userName, @RequestParam String token) throws Exception {
         String repoProjectName = extractProjectName(repoUrl);
         String localPath = String.format("./additional/repos/%s/%s", userName, repoProjectName);
         log.info("克隆路径: {}", new File(localPath).getAbsolutePath());
@@ -128,7 +118,7 @@ public class RagServiceImpl implements IRAGService {
 
 
         log.info("遍历解析路径，上传完成: {}", repoUrl);
-        return Response.<String>builder().code(HttpStatus.OK.getCode()).info("调用成功").build();
+        return true;
     }
 
     private String extractProjectName(String repoUrl) {

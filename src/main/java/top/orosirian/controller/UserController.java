@@ -1,31 +1,36 @@
 package top.orosirian.controller;
 
+import com.google.common.util.concurrent.RateLimiter;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RBucket;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import top.orosirian.entity.Response;
-import top.orosirian.entity.dto.user.LoginDTO;
-import top.orosirian.entity.dto.user.RegisterDTO;
-import top.orosirian.entity.dto.user.ResetPasswordDTO;
-import top.orosirian.entity.enums.HttpStatus;
-import top.orosirian.entity.enums.StringType;
-import top.orosirian.service.inf.user.UserService;
+import top.orosirian.model.annotation.InterceptorAnnotation;
+import top.orosirian.model.annotation.VerifyAnnotation;
+import top.orosirian.model.enums.StringType;
+import top.orosirian.model.enums.VerificationType;
+import top.orosirian.service.inf.UserService;
 import top.orosirian.utils.Captcha;
-import top.orosirian.utils.StringUtils;
+import top.orosirian.utils.Constant;
+import top.orosirian.utils.tools.StringTools;
+import top.orosirian.utils.tools.ThirdPartyTools;
 
 import javax.imageio.ImageIO;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.time.Duration;
 
 @Slf4j
 @RestController
-@CrossOrigin("*")
 @RequestMapping("/api/v1/user")
 public class UserController {
+
+    // 这里的校验注解简陋，不过知道原理比直接调库好，以后想用就可以从这参考
 
     @Autowired
     RedissonClient redissonClient;
@@ -33,8 +38,20 @@ public class UserController {
     @Autowired
     UserService userService;
 
+    @Autowired
+    ThirdPartyTools thirdPartyTools;
+
+    private static final RateLimiter captchaRateLimiter = RateLimiter.create(5.0);
+
+    private static final RateLimiter emailRateLimiter = RateLimiter.create(1.0 / 60);
+
     @GetMapping("/send_captcha")
-    public Response<Boolean> sendCaptcha(HttpSession session, HttpServletResponse response) throws IOException {
+    public void sendCaptcha(HttpSession session, HttpServletResponse response) throws IOException {
+        if (!captchaRateLimiter.tryAcquire()) {
+            response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
+            response.getWriter().write("请求过于频繁");
+            return;
+        }
         // 1.获取验证码
         Captcha captcha = new Captcha(4);
         // 2.放到redis
@@ -44,86 +61,84 @@ public class UserController {
         response.setHeader("Pragma", "no-cache");   // 兼容旧浏览器
         response.setHeader("Cache-Control", "no-cache");
         response.setDateHeader("Expires", 0);
-        response.setContentType("image/jpeg");
-        ImageIO.write(captcha.getBufferedImage(), "png", response.getOutputStream());
-        response.getOutputStream().close();
-        return Response.<Boolean>builder()
-                .code(HttpStatus.OK.getCode())
-                .info("验证码发送成功")
-                .data(Boolean.TRUE)
-                .build();
+        response.setContentType("image/png");
+        try (OutputStream os = response.getOutputStream()) {    // 自动关闭
+            ImageIO.write(captcha.getBufferedImage(), "png", os);
+        }
     }
 
+    // 限流
+    @InterceptorAnnotation(requireVerify = true)
     @GetMapping("/send_email")
-    public Response<Boolean> sendEmail(HttpSession session,
-                                       @RequestParam String email,
-                                       @RequestParam String type,
-                                       @RequestParam String captcha) {
-        // 1. 验证图形验证码
-        RBucket<String> captchaBucket = redissonClient.getBucket("captcha:" + session.getId());
-        String storedCaptcha = captchaBucket.getAndDelete();    // 验证码一次性使用
-        if (storedCaptcha == null || !storedCaptcha.equals(captcha)) {
-            return Response.<Boolean>builder()
-                    .code(HttpStatus.BAD_REQUEST.getCode())
-                    .info("图形验证码错误或已过期")
-                    .data(false)
-                    .build();
+    public ResponseEntity<String> sendEmail(@RequestParam @VerifyAnnotation(regex = VerificationType.EMAIL) String email,
+                                    @RequestParam String type) {
+        if (!emailRateLimiter.tryAcquire()) {
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body("请求过于频繁");
         }
-        // 2. 检查邮箱格式
-        if (!email.matches("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+$")) {
-            return Response.<Boolean>builder()
-                    .code(HttpStatus.BAD_REQUEST.getCode())
-                    .info("邮箱格式不正确")
-                    .data(false)
-                    .build();
-        }
-        // 3. 根据操作类型校验邮箱状态
+        // 根据操作类型校验邮箱状态
         boolean emailExists = userService.isEmailExist(email);
         if ("register".equalsIgnoreCase(type) && emailExists) {
-            return Response.<Boolean>builder()
-                    .code(HttpStatus.BAD_REQUEST.getCode())
-                    .info("该邮箱已被注册")
-                    .data(false)
-                    .build();
+            return ResponseEntity.badRequest().body("该邮箱已注册");
         } else if ("reset".equalsIgnoreCase(type) && !emailExists) {
-            return Response.<Boolean>builder()
-                    .code(HttpStatus.BAD_REQUEST.getCode())
-                    .info("该邮箱未注册")
-                    .data(false)
-                    .build();
+            return ResponseEntity.badRequest().body("该邮箱未注册");
         }
-        // 4. 生成并发送邮箱验证码
-        String emailCode = StringUtils.getRandomString(StringType.NUMBER, 6);
-        return null;
-
+        String emailCode = StringTools.getRandomString(StringType.NUMBER, 6);
+        RBucket<String> bucket = redissonClient.getBucket("email:" + email);
+        bucket.set(emailCode, Duration.ofMinutes(15));
+        if (thirdPartyTools.sendEmail(email, emailCode)) {
+            return ResponseEntity.ok().body("邮箱验证码已发送");
+        } else {
+            return ResponseEntity.internalServerError().body("邮箱验证码发送失败");
+        }
     }
 
     @PostMapping("/register")
-    public Response<Boolean> register(HttpSession session, @RequestBody RegisterDTO user) {
-        // （前端获取验证码、校验码）
-        // 判断captcha
-        // 判断校验码
-        // 插入数据库，记得给password加密md5
-        return null;
+    public ResponseEntity<String> register(HttpSession session,
+                                      @RequestParam @VerifyAnnotation(regex = VerificationType.EMAIL) String email,
+                                      @RequestParam @VerifyAnnotation(regex = VerificationType.PASSWORD) String password,
+                                      @RequestParam String captcha,
+                                      @RequestParam String verificationCode) {
+        // 邮箱重复性检查
+        if (userService.isEmailExist(email)) {
+            return ResponseEntity.badRequest().body("该邮箱已被注册");
+        }
+
+        // 图形验证码
+        RBucket<String> captchaBucket = redissonClient.getBucket("captcha:" + session.getId());
+        String storedCaptcha = captchaBucket.getAndDelete();    // 验证码一次性使用
+        if (storedCaptcha == null || !storedCaptcha.equalsIgnoreCase(captcha)) {
+            return ResponseEntity.badRequest().body("图形验证码错误或已过期");
+        }
+
+        // 邮箱验证码
+        RBucket<String> codeBucket = redissonClient.getBucket("email:" + email);
+        String storedVerificationCode = codeBucket.getAndDelete();
+        if (storedVerificationCode == null || !storedVerificationCode.equals(verificationCode)) {
+            return ResponseEntity.badRequest().body("邮箱验证码错误或已过期");
+        }
+
+        // 插入数据库
+        userService.register(email, password);
+        return ResponseEntity.ok().body("注册成功");
     }
 
     @PostMapping("/login")
-    public Response<Boolean> login(HttpSession session, @RequestBody LoginDTO user) {
-        // （前端获取验证码）
-        // 判断captcha
-        // 根据user从数据库里取，判断是否正确
-        // 如果正确则将userId放入session
-        return null;
+    public ResponseEntity<String> login(HttpSession session,
+                                   @RequestParam @VerifyAnnotation(regex = VerificationType.EMAIL) String email,
+                                   @RequestParam @VerifyAnnotation(regex = VerificationType.PASSWORD) String password) {
+        Long userId = userService.login(email, password);
+        if (userId != -1) {
+            session.setAttribute(Constant.USER_SESSION_KEY, userId);
+            return ResponseEntity.ok().body("登陆成功");
+        } else {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("登陆失败，用户名或密码错误");
+        }
     }
 
-    @PostMapping("/reset_password")
-    public Response<Boolean> resetPassword(HttpSession session, @RequestBody ResetPasswordDTO user) {
-        // （前端获取验证码、校验码）
-        // 判断captcha
-        // 判断校验码
-        // 修改密码
-        return null;
-    }
-
+//    @PostMapping("/quit")
+//    @InterceptorAnnotation(requireLogin = true)
+//    public ResponseEntity<String> quit(HttpSession session) {
+//
+//    }
 
 }

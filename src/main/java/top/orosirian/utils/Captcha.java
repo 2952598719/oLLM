@@ -1,7 +1,9 @@
 package top.orosirian.utils;
 
 import lombok.Data;
-import top.orosirian.entity.enums.StringType;
+import top.orosirian.model.enums.StringType;
+import top.orosirian.utils.tools.PictureTools;
+import top.orosirian.utils.tools.StringTools;
 
 import java.awt.*;
 import java.awt.image.BufferedImage;
@@ -26,7 +28,7 @@ public class Captcha {
 
     public Captcha(int characterCount) {
         this.characterCount = characterCount;
-        this.code = StringUtils.getRandomString(StringType.ALL_CHARACTER, characterCount);
+        this.code = StringTools.getRandomString(StringType.ALL_CHARACTER, characterCount);
         generateCaptcha();
     }
 
@@ -39,7 +41,7 @@ public class Captcha {
         bufferedImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
         Graphics g = bufferedImage.getGraphics();
         // 1. 设置背景色
-        g.setColor(GraphUtils.getRandomColor(200, 250));
+        g.setColor(PictureTools.getRandomColor(200, 250));
         g.fillRect(0, 0, width, height);
         // 2. 设置字体
         Font font = new Font("Fixedsys", Font.BOLD, fontHeight);
@@ -50,7 +52,7 @@ public class Captcha {
             int ys = RANDOM.nextInt(height);
             int xe = xs + RANDOM.nextInt(width);
             int ye = ys + RANDOM.nextInt(height);
-            g.setColor(GraphUtils.getRandomColor(1, 255));
+            g.setColor(PictureTools.getRandomColor(1, 255));
             g.drawLine(xs, ys, xe, ye);
         }
         // 4.添加噪点
@@ -64,7 +66,7 @@ public class Captcha {
         // 字符绘制
         for (int i = 0; i < characterCount; i++) {
             String character = code.substring(i, i + 1);
-            g.setColor(GraphUtils.getRandomColor(1, 255));
+            g.setColor(PictureTools.getRandomColor(1, 255));
             g.drawString(character, i * fontWidth + 3, codeY);
         }
     }
