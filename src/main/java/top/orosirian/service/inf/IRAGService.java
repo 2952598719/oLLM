@@ -9,10 +9,10 @@ public interface IRAGService {
 
     List<TagResponseDTO> queryRagTagList(Long userId);
 
-    void createTag(Long userId, String tagName);
+    void createTag(Long userId, Long tagId, String tagName);
 
     boolean uploadFile(Long userId, Long tagId, List<MultipartFile> files);
 
-    boolean analyzeGitRepository(Long userId, String repoUrl, String userName, String token) throws Exception;
+    boolean analyzeGitRepository(Long userId, Long tagId, String repoUrl, String userName, String token) throws Exception;
 
 }

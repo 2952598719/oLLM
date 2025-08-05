@@ -3,7 +3,6 @@ package top.orosirian.service.impl;
 import cn.hutool.core.lang.Snowflake;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.chat.ChatResponse;
 import org.springframework.ai.chat.messages.*;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.document.Document;
@@ -14,7 +13,6 @@ import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import reactor.core.publisher.Flux;
 import top.orosirian.model.Response.ChatResponseDTO;
 import top.orosirian.mapper.OpenAiMapper;
 import top.orosirian.model.Response.MessageResponseDTO;
@@ -163,61 +161,90 @@ public class OpenAiServiceImpl implements IAiService {
     }
 
     @Override
-    public Flux<ChatResponse> generateStreamRag(Long userId, Long chatId, String ragTag, String model, String message) {
+    public void generateStreamRag(Long userId, Long chatId, String tagId, String model, String message, SseEmitter emitter) {
+
+        // 2. 修改验证逻辑：不再返回 Flux.error，而是直接抛出异常。
+        //    这个异常将由 Controller 捕获，并用于通知 emitter 发生了错误。
         if (chatId == null || !openAiMapper.isChatBelong(chatId, userId)) {
-            return Flux.error(new IllegalArgumentException("无效的Chat ID或用户无权访问"));
+            throw new IllegalArgumentException("无效的Chat ID或用户无权访问");
         }
+
+        // --- 以下是您原有的业务逻辑，保持不变 ---
+        // 保存用户消息
         Long userMessageId = snowflake.nextId();
         Long assistantMessageId = snowflake.nextId();
-        // 1.保存用户消息
-        openAiMapper.insertMessage(userMessageId, chatId, "user", message);
-        // 2.获取历史消息
+        openAiMapper.insertMessageWithRag(userMessageId, chatId, Long.valueOf(tagId),  "user", message);
+
+        // 获取历史消息
         List<MessageResponseDTO> historyMessages = openAiMapper.getMessageList(chatId);
         historyMessages = historyMessages.subList(0, historyMessages.size() - 1);
-        // 3.获取rag消息
+        // 获取rag相关信息
         SearchRequest request = SearchRequest.query(message)
                 .withTopK(3)
-                .withFilterExpression(String.format("knowledge == '%s'", ragTag));
+                .withFilterExpression(String.format("knowledge == '%s'", tagId));
         List<Document> documents = pgVectorStore.similaritySearch(request);
         String documentsContext = documents.stream()
                 .map(Document::getContent)
                 .collect(Collectors.joining("\n---\n"));
-        // 4.构造MessageList
+
+        // 构造MessageList
         List<Message> messageList = new ArrayList<>();
         messageList.add(new SystemMessage(Constant.COMMON_PROMPT_TEMPLATE));
         historyMessages.forEach(msg -> {
-            if (msg.getRole().equalsIgnoreCase("user")) {
+            if ("user".equalsIgnoreCase(msg.getRole())) {
                 messageList.add(new UserMessage(msg.getContent()));
-            } else if (msg.getRole().equalsIgnoreCase("assistant")) {
+            } else if ("assistant".equalsIgnoreCase(msg.getRole())) {
                 messageList.add(new AssistantMessage(msg.getContent()));
             }
         });
         messageList.add(new UserMessage(Constant.RAG_PROMPT_TEMPLATE
                 .replace("{documents}", documentsContext)
-                .replace("{question", message)));
-        // 5.发送请求，收集响应内容
+                .replace("{question}", message)));
+
+        // 发送请求，准备收集响应内容
         StringBuilder builder = new StringBuilder();
         Prompt prompt = new Prompt(messageList, OpenAiChatOptions.builder().withModel(model).build());
-        return chatClient.stream(prompt)
+
+        // 3. 修改响应式流的处理方式
+        chatClient.stream(prompt)
                 .doOnNext(chatResponse -> {
-                    String content = chatResponse.getResult().getOutput().getContent();
-                    if (content != null) {
-                        builder.append(content);
+                    try {
+                        // 3a. 将每个数据块通过 emitter 发送给前端
+                        emitter.send(chatResponse);
+
+                        // 3b. (保留原有逻辑) 同时，累加内容以便最后存入数据库
+                        String content = chatResponse.getResult().getOutput().getContent();
+                        if (content != null) {
+                            builder.append(content);
+                        }
+                    } catch (IOException e) {
+                        // 如果发送失败 (通常是客户端断开了连接)，
+                        // 抛出一个运行时异常，这会被下面的 doOnError 捕获。
+                        log.warn("发送SSE事件时出错，客户端可能已断开连接: {}", e.getMessage());
+                        throw new RuntimeException("SSE_SEND_ERROR", e);
                     }
                 })
                 .doOnComplete(() -> {
+                    // 3c. (保留原有逻辑) 流结束后，保存完整的AI回复到数据库
                     String fullResponse = builder.toString();
                     if (!fullResponse.isEmpty()) {
-
                         openAiMapper.insertMessage(assistantMessageId, chatId, "assistant", fullResponse);
-                        log.info("AI响应保存成功。");
+                        log.info("AI响应保存成功。ChatId: {}", chatId);
                     } else {
                         log.warn("流接收完成，但内容为空，不进行保存。ChatId: {}", chatId);
                     }
+                    // 3d. (新增逻辑) 通知 emitter 数据流正常结束
+                    emitter.complete();
                 })
                 .doOnError(throwable -> {
+                    // 3e. (增强原有逻辑) 发生任何错误时
                     log.error("处理流时发生错误。ChatId: {}", chatId, throwable);
-                });
+                    // 3f. (新增逻辑) 通知 emitter 发生了错误，这将关闭客户端的连接
+                    emitter.completeWithError(throwable);
+                })
+                // 4. (关键步骤) 触发订阅
+                //    因为我们现在是手动管理流，必须调用 subscribe() 来启动整个过程。
+                .subscribe();
     }
 
 }

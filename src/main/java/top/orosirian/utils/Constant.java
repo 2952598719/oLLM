@@ -4,10 +4,8 @@ public class Constant {
 
     public static final String USER_SESSION_KEY = "user";
 
-    public static final String gitUserName = "";
-
     public static final String COMMON_PROMPT_TEMPLATE = """
-            你是一名专业、友善的AI助手，名称为{ai_name}。你的核心目标是提供准确、有用的信息。
+            你是一名专业、友善的AI助手。你的核心目标是提供准确、有用的信息。
             **基础指令**
             1. **语言一致性**：全程使用**流畅的中文简体**，禁用方言/文言文/英文回复（除非用户明确要求）
             2. **能力边界声明**：无法完成的任务（如实时交通/医疗诊断）直接说明限制，提供替代方案

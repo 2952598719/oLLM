@@ -1,8 +1,6 @@
 package top.orosirian.service.inf;
 
-import org.springframework.ai.chat.ChatResponse;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import reactor.core.publisher.Flux;
 import top.orosirian.model.Response.ChatResponseDTO;
 import top.orosirian.model.Response.MessageResponseDTO;
 
@@ -28,6 +26,6 @@ public interface IAiService {
 
     void generateStream(Long userId, Long chatId, String model, String message, SseEmitter emitter);
 
-    Flux<ChatResponse> generateStreamRag(Long userId, Long chatId, String ragTag, String model, String message);
+    void generateStreamRag(Long userId, Long chatId, String tagId, String model, String message, SseEmitter emitter);
 
 }

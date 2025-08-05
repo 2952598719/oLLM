@@ -9,7 +9,7 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <BrowserRouter>
       <App />
-      <Toaster position="top-right" />
+      <Toaster position="top-right" style={{ marginTop: '80px' }} />
     </BrowserRouter>
   </StrictMode>
 );

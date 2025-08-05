@@ -5,8 +5,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
-import org.redisson.api.RList;
-import org.redisson.api.RedissonClient;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.reader.tika.TikaDocumentReader;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
@@ -14,7 +12,6 @@ import org.springframework.ai.vectorstore.PgVectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.PathResource;
 import org.springframework.stereotype.Service;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.multipart.MultipartFile;
 import top.orosirian.mapper.RagMapper;
 import top.orosirian.model.Response.TagResponseDTO;
@@ -38,8 +35,6 @@ public class RagServiceImpl implements IRAGService {
 
     @Autowired
     private RagMapper ragMapper;
-    @Autowired
-    private Snowflake snowflake;
 
     @Override
     public List<TagResponseDTO> queryRagTagList(Long userId) {
@@ -47,8 +42,7 @@ public class RagServiceImpl implements IRAGService {
     }
 
     @Override
-    public void createTag(Long userId, String tagName) {
-        Long tagId = snowflake.nextId();
+    public void createTag(Long userId, Long tagId, String tagName) {
         ragMapper.createTag(userId, tagId, tagName);
     }
 
@@ -60,8 +54,8 @@ public class RagServiceImpl implements IRAGService {
             List<Document> documents = documentReader.get();
             List<Document> documentSplitterList = tokenTextSplitter.apply(documents);
 
-            documents.forEach(doc -> doc.getMetadata().put("knowledge", tagId));
-            documentSplitterList.forEach(doc -> doc.getMetadata().put("knowledge", tagId));
+            documents.forEach(doc -> doc.getMetadata().put("knowledge", String.valueOf(tagId)));
+            documentSplitterList.forEach(doc -> doc.getMetadata().put("knowledge", String.valueOf(tagId)));
 
             pgVectorStore.accept(documentSplitterList);
         }
@@ -70,7 +64,7 @@ public class RagServiceImpl implements IRAGService {
     }
 
     @Override
-    public boolean analyzeGitRepository(Long userId, @RequestParam String repoUrl, @RequestParam String userName, @RequestParam String token) throws Exception {
+    public boolean analyzeGitRepository(Long userId, Long tagId, String repoUrl, String userName, String token) throws Exception {
         String repoProjectName = extractProjectName(repoUrl);
         String localPath = String.format("./additional/repos/%s/%s", userName, repoProjectName);
         log.info("克隆路径: {}", new File(localPath).getAbsolutePath());
@@ -89,8 +83,8 @@ public class RagServiceImpl implements IRAGService {
                     TikaDocumentReader reader = new TikaDocumentReader(new PathResource(file));
                     List<Document> documents = reader.get();
                     List<Document> documentSplitterList = tokenTextSplitter.apply(documents);
-                    documents.forEach(doc -> doc.getMetadata().put("knowledge", repoProjectName));
-                    documentSplitterList.forEach(doc -> doc.getMetadata().put("knowledge", repoProjectName));
+                    documents.forEach(doc -> doc.getMetadata().put("knowledge", String.valueOf(tagId)));
+                    documentSplitterList.forEach(doc -> doc.getMetadata().put("knowledge", String.valueOf(tagId)));
                     pgVectorStore.accept(documentSplitterList);
                 } catch (Exception e) {
                     log.error("遍历解析路径，上传知识库失败: {}", file.getFileName());
@@ -117,7 +111,6 @@ public class RagServiceImpl implements IRAGService {
 
         FileUtils.deleteDirectory(new File(localPath));
 
-        Long tagId = snowflake.nextId();
         ragMapper.createTag(userId, tagId, repoProjectName);
 
         log.info("遍历解析路径，上传完成: {}", repoUrl);

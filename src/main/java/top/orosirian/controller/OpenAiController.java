@@ -4,13 +4,11 @@ import cn.hutool.core.lang.Snowflake;
 import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.chat.ChatResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import reactor.core.publisher.Flux;
 import top.orosirian.model.Response.ChatResponseDTO;
 import top.orosirian.model.Response.MessageResponseDTO;
 import top.orosirian.model.annotation.InterceptorAnnotation;
@@ -123,10 +121,32 @@ public class OpenAiController {
 
     // http://localhost:8090/api/v1/ollama/generate_stream_rag?model=deepseek-r1:1.5b&message=hi
     @GetMapping("/generate_stream_rag")
-    public Flux<ChatResponse> generateStreamRag(HttpSession session, @RequestParam String chatId, @RequestParam String model, @RequestParam String ragTag, @RequestParam String message) {
+    public SseEmitter generateStreamRag(HttpSession session, @RequestParam String chatId, @RequestParam String model, @RequestParam String tagId, @RequestParam String message) {
         Long userId = (Long) session.getAttribute(Constant.USER_SESSION_KEY);
-        log.info("rag消息生成中");
-        return openAiService.generateStreamRag(userId, Long.valueOf(chatId), model, ragTag, message);
+        log.info("用户 {} 开始请求流式rag生成，ChatId: {}", userId, chatId);
+
+        // 1. 创建 SseEmitter，超时时间设置为0L表示永不超时（推荐）
+        SseEmitter emitter = new SseEmitter(0L);
+
+        // 2. 使用一个单独的线程来执行耗时的业务逻辑，避免阻塞Web服务器的I/O线程
+        ExecutorService sseMvcExecutor = Executors.newSingleThreadExecutor();
+
+        sseMvcExecutor.execute(() -> {
+            try {
+                // 3. 调用修改后的 Service 方法，将 emitter 传递进去
+                openAiService.generateStreamRag(userId, Long.valueOf(chatId), tagId, model, message, emitter);
+            } catch (Exception e) {
+                // 4. 捕获同步异常（例如之前的权限验证失败）
+                //    并通知 emitter 发生了错误
+                log.error("在准备流式rag响应时发生错误. ChatId: {}", chatId, e);
+                emitter.completeWithError(e);
+            }
+            // 注意：这里不再需要 emitter.complete()，因为 Service 内部的
+            // doOnComplete 或 doOnError 会负责关闭 emitter。
+        });
+
+        log.info("SseEmitter for ChatId: {} 已返回给客户端", chatId);
+        return emitter;
     }
 
     // 还可以提供删除消息功能

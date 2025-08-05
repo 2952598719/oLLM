@@ -4,12 +4,18 @@
   import { ChatInput } from '@/components/chat/ChatInput';
   import { TypingIndicator } from '@/components/chat/TypingIndicator';
   import { AuthModal } from '@/components/auth/AuthModal';
+  import KnowledgeBaseUploadModal from '@/components/knowledgeBase/KnowledgeBaseUploadModal';
   import { useContext } from 'react';
   import { AuthContext } from '@/contexts/authContext';
   import { toast } from 'sonner';
  
 
 // API Response Types
+interface TagResponseDTO {
+  tagId: string;
+  tagName: string;
+}
+
 interface ChatResponseDTO {
   chatId: string;
   title: string;
@@ -94,9 +100,18 @@ const fetchMessageList = async (chatId: string): Promise<MessageResponseDTO[]> =
 const generateStream = async (
   chatId: string, 
   model: string, 
-  message: string
+  message: string,
+  tagId?: string
 ): Promise<ReadableStream> => {
-  const response = await fetch(`http://localhost:8090/api/v1/openai/generate_stream?chatId=${chatId}&model=${encodeURIComponent(model)}&message=${encodeURIComponent(message)}`, {
+  const endpoint = tagId && tagId.trim() ? 'generate_stream_rag' : 'generate_stream';
+  let url = `http://localhost:8090/api/v1/openai/${endpoint}?chatId=${chatId}&model=${encodeURIComponent(model)}&message=${encodeURIComponent(message)}`;
+  
+  // Add tagId parameter if selected
+  if (tagId && tagId.trim()) {
+    url += `&tagId=${encodeURIComponent(tagId)}`;
+  }
+  
+  const response = await fetch(url, {
     method: 'GET',
     credentials: 'include',
     headers: {
@@ -112,6 +127,8 @@ const generateStream = async (
   return response.body;
 }
 
+// 移除外部定义的fetchTagList函数
+
 export default function Home() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
@@ -121,9 +138,38 @@ export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [knowledgeBaseModalOpen, setKnowledgeBaseModalOpen] = useState(false);
   const { isAuthenticated, logout } = useContext(AuthContext);
   const [isLoadingChatList, setIsLoadingChatList] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  // Knowledge base state
+  const [tagList, setTagList] = useState<TagResponseDTO[]>([]);
+  const [selectedTagId, setSelectedTagId] = useState('');
+  const [isLoadingTags, setIsLoadingTags] = useState(false);
+  
+  // Fetch knowledge base list
+  const fetchTagList = async () => {
+    if (!isAuthenticated) return;
+    
+    setIsLoadingTags(true);
+    try {
+      const response = await fetch('http://localhost:8090/api/v1/rag/query_tag_list', {
+        credentials: 'include',
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch knowledge base list');
+      }
+      
+      const data = await response.json();
+      setTagList(data);
+    } catch (error) {
+      console.error('Error fetching knowledge base list:', error);
+      toast.error('获取知识库列表失败');
+    } finally {
+      setIsLoadingTags(false);
+    }
+  };
   
 // Create a new conversation - switches to "not in conversation" state
 const createNewConversation = () => {
@@ -219,7 +265,17 @@ useEffect(() => {
     setCurrentConversationId(null);
     setMessages([]);
   }
-}, [isAuthenticated]);
+  }, [isAuthenticated]);
+  
+  // Fetch knowledge base list when authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchTagList();
+    } else {
+      setTagList([]);
+      setSelectedTagId('');
+    }
+  }, [isAuthenticated]);
 
 // Load messages when current conversation changes
 useEffect(() => {
@@ -277,7 +333,13 @@ const deleteConversation = async (id: string) => {
   
 // Handle sending a message
 const handleSendMessage = async () => {
-  if (!input.trim() || isStreaming || !isAuthenticated) return;
+  if (!input.trim() || isStreaming) return;
+  
+  // 未登录时显示登录弹窗
+  if (!isAuthenticated) {
+    setAuthModalOpen(true);
+    return;
+  }
   
   const userInput = input.trim();
   
@@ -330,7 +392,8 @@ const handleSendMessage = async () => {
     }
     
     // Step 3: Generate stream with the message
-    const stream = await generateStream(chatId, 'deepseek-chat', userInput);
+      // 传入选中的tagId，如果有的话
+      const stream = await generateStream(chatId, 'deepseek-chat', userInput, selectedTagId);
     
      // Create a reader for the stream
      const reader = stream.getReader();
@@ -583,23 +646,60 @@ const handleSendMessage = async () => {
              </p>
            </div>
            
-           <div className="flex items-center gap-4">
-             {isAuthenticated ? (
-               <button
-                 onClick={logout}
-                 className="py-2 px-4 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-medium transition-all duration-200 hover:bg-slate-300 dark:hover:bg-slate-600"
-               >
-                 <i className="fa-solid fa-sign-out mr-2"></i>退出登录
-               </button>
-             ) : (
-               <button
-                 onClick={() => setAuthModalOpen(true)}
-                 className="py-2 px-4 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-medium transition-all duration-200 hover:opacity-90"
-               >
-                 <i className="fa-solid fa-user-circle mr-2"></i>登录/注册
-               </button>
-             )}
-           </div>
+            <div className="flex items-center gap-4">
+                {/* 知识库选择下拉框和上传按钮 - 仅登录用户可见 */}
+                {isAuthenticated && (
+                  <div className="flex items-center gap-4">
+                    {/* 知识库选择下拉框 */}
+                    <div className="relative">
+                      <select
+                        value={selectedTagId}
+                        onChange={(e) => setSelectedTagId(e.target.value)}
+                        disabled={isLoadingTags}
+                       className="py-2 px-4 pr-8 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none w-64"
+                      >
+                        <option value="">...</option>
+                        {isLoadingTags ? (
+                          <option value="" disabled>加载中...</option>
+                        ) : (
+                          tagList.map(tag => (
+                            <option key={tag.tagId} value={tag.tagId}>
+                              {tag.tagName}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                        <i className="fa-solid fa-chevron-down text-slate-500 dark:text-slate-400 text-xs"></i>
+                      </div>
+                    </div>
+                    
+                    {/* 上传知识库按钮 */}
+                    <button
+                      onClick={() => setKnowledgeBaseModalOpen(true)}
+                      className="py-2 px-4 rounded-lg bg-gradient-to-r from-green-600 to-teal-600 text-white font-medium transition-all duration-200 hover:opacity-90"
+                    >
+                      <i className="fa-solid fa-upload mr-2"></i>上传知识库
+                    </button>
+                  </div>
+                )}
+              
+              {isAuthenticated ? (
+                <button
+                  onClick={logout}
+                  className="py-2 px-4 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-medium transition-all duration-200 hover:bg-slate-300 dark:hover:bg-slate-600"
+                >
+                  <i className="fa-solid fa-sign-out mr-2"></i>退出登录
+                </button>
+              ) : (
+                <button
+                  onClick={() => setAuthModalOpen(true)}
+                  className="py-2 px-4 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-medium transition-all duration-200 hover:opacity-90"
+                >
+                  <i className="fa-solid fa-user-circle mr-2"></i>登录/注册
+                </button>
+              )}
+            </div>
          </header>
         
         {/* Main chat area */}
@@ -662,11 +762,17 @@ const handleSendMessage = async () => {
         </footer>
        </div>
        
-       {/* Authentication Modal */}
-       <AuthModal 
-         isOpen={authModalOpen} 
-         onClose={() => setAuthModalOpen(false)} 
-       />
+        {/* Authentication Modal */}
+        <AuthModal 
+          isOpen={authModalOpen} 
+          onClose={() => setAuthModalOpen(false)} 
+        />
+        
+        {/* Knowledge Base Upload Modal */}
+        <KnowledgeBaseUploadModal
+          isOpen={knowledgeBaseModalOpen}
+          onClose={() => setKnowledgeBaseModalOpen(false)}
+        />
      </div>
    );
 }

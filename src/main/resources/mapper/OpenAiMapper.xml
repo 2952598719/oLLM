@@ -58,5 +58,11 @@
         VALUES (#{messageId}, #{chatId}, #{role}, #{content})
     </insert>
 
+    <insert id="insertMessageWithRag">
+        INSERT
+        INTO ollm.public.messages(id, chat_id, role, content, tag_id)
+        VALUES (#{messageId}, #{chatId}, #{role}, #{content}, #{tagId})
+    </insert>
+
 
 </mapper>

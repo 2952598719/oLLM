@@ -23,5 +23,7 @@ public interface OpenAiMapper {
 
     void insertMessage(Long messageId, Long chatId, String role, String content);
 
+    void insertMessageWithRag(Long messageId, Long chatId, Long tagId, String role, String content);
+
 
 }
