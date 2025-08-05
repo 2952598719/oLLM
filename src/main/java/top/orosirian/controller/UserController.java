@@ -138,6 +138,15 @@ public class UserController {
         }
     }
 
+//    @GetMapping("/me")
+//    public ResponseEntity<String> checkLogin(HttpSession httpSession) {
+//        if (httpSession.getAttribute(Constant.USER_SESSION_KEY) != null) {
+//            return ResponseEntity.ok("用户处于登录状态");
+//        } else {
+//            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+//        }
+//    }
+
 //    @PostMapping("/quit")
 //    @InterceptorAnnotation(requireLogin = true)
 //    public ResponseEntity<String> quit(HttpSession session) {

@@ -1,6 +1,5 @@
 package top.orosirian.utils.interceptor;
 
-import com.google.protobuf.ServiceException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -63,7 +62,7 @@ public class GlobalInterceptor {
             throw e;
         } catch (Exception e) {
             log.error("校验系统错误", e);
-            throw new ServiceException("系统异常");
+            throw new BusinessException(HttpStatus.INTERNAL_SERVER_ERROR, "系统异常");
         }
     }
 

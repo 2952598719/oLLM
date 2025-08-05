@@ -1,5 +1,9 @@
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 
 interface ChatMessageProps {
   content: string;
@@ -59,7 +63,41 @@ export function ChatMessage({ content, role, timestamp }: ChatMessageProps) {
             ? "bg-gradient-to-br from-blue-600 to-indigo-600 text-white rounded-tr-none"
             : "bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-tl-none border border-slate-100 dark:border-slate-700"
         )}>
-          <p className="whitespace-pre-wrap leading-relaxed">{content}</p>
+           <ReactMarkdown 
+             remarkPlugins={[remarkGfm, remarkMath]}
+             rehypePlugins={[rehypeKatex]}
+            className="prose prose-sm max-w-none leading-relaxed"
+            components={{
+              p: ({ node, ...props }) => <p {...props} className="my-1 leading-relaxed" />,
+              h1: ({ node, ...props }) => <h1 {...props} className="text-xl font-bold mt-4 mb-2" />,
+              h2: ({ node, ...props }) => <h2 {...props} className="text-lg font-bold mt-3 mb-1" />,
+              h3: ({ node, ...props }) => <h3 {...props} className="text-base font-bold mt-2 mb-1" />,
+              code: ({ node, ...props }) => <code {...props} className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded text-sm" />,
+              pre: ({ node, ...props }) => (
+                <pre {...props} className="bg-slate-100 dark:bg-slate-800 p-3 rounded-lg overflow-x-auto text-sm my-2" />
+              ),
+              ul: ({ node, ...props }) => <ul {...props} className="list-disc pl-5 my-1" />,
+              ol: ({ node, ...props }) => <ol {...props} className="list-decimal pl-5 my-1" />,
+              li: ({ node, ...props }) => <li {...props} className="my-0.5" />,
+              a: ({ node, ...props }) => <a {...props} className="text-blue-600 dark:text-blue-400 hover:underline" />,
+              strong: ({ node, ...props }) => <strong {...props} className="font-bold" />,
+               em: ({ node, ...props }) => <em {...props} className="italic" />,
+               // 表格样式
+               table: ({ node, ...props }) => (
+                 <div className="overflow-x-auto my-4">
+                   <table {...props} className="min-w-full border-collapse border border-slate-200 dark:border-slate-700" />
+                 </div>
+               ),
+               th: ({ node, ...props }) => (
+                 <th {...props} className="border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-left text-sm font-semibold" />
+               ),
+               td: ({ node, ...props }) => (
+                 <td {...props} className="border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm" />
+               )
+            }}
+          >
+            {content}
+          </ReactMarkdown>
         </div>
         
         {/* Timestamp */}

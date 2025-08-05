@@ -241,15 +241,16 @@ useEffect(() => {
         setConversations(formattedConversations);
         
         // If there are conversations, set the first one as active
-        if (formattedConversations.length > 0) {
-           setCurrentConversationId(formattedConversations[0].id.toString());
-           // Load messages for the first conversation
-           handleConversationSelect(formattedConversations[0].id.toString());
-        } else {
-  // If no conversations, set to no conversation state
-  setCurrentConversationId(null);
-  setMessages([]);
-}
+           // 对对话按创建时间倒序排序（最新的在前面）
+           const sortedConversations = [...formattedConversations].sort((a, b) => 
+             new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+           );
+           
+           setConversations(sortedConversations);
+           
+           // 登录后不自动选择任何对话
+           setCurrentConversationId(null);
+           setMessages([]);
       } catch (error) {
         console.error('Error fetching chat list:', error);
         toast.error('Failed to load conversations');
@@ -461,19 +462,19 @@ const handleSendMessage = async () => {
          
          if (content) {
            // 尝试解析JSON（如果后端返回JSON格式）
-          try {
-            const parsedContent = JSON.parse(content);
-            // 提取嵌套的content字段
-            const messageContent = parsedContent.result?.output?.content || '';
-            // 检查是否结束
-            const finishReason = parsedContent.result?.output?.properties?.finishReason;
-            
-            if (messageContent) {
-              updateAssistantMessage(messageContent);
-            }
-            
-            if (finishReason === 'STOP') {
-              // 可以在这里添加流结束的处理逻辑
+            try {
+              const parsedContent = JSON.parse(content);
+              // 提取嵌套的text字段（新格式）
+              const messageContent = parsedContent.result?.output?.text || '';
+              // 检查是否结束（新格式路径）
+              const finishReason = parsedContent.result?.metadata?.finishReason;
+              
+              if (messageContent) {
+                updateAssistantMessage(messageContent);
+              }
+              
+              if (finishReason === 'STOP') {
+                // 可以在这里添加流结束的处理逻辑
               console.log('Stream completed');
             }
           } catch (e) {
@@ -769,10 +770,11 @@ const handleSendMessage = async () => {
         />
         
         {/* Knowledge Base Upload Modal */}
-        <KnowledgeBaseUploadModal
-          isOpen={knowledgeBaseModalOpen}
-          onClose={() => setKnowledgeBaseModalOpen(false)}
-        />
+         <KnowledgeBaseUploadModal
+           isOpen={knowledgeBaseModalOpen}
+           onClose={() => setKnowledgeBaseModalOpen(false)}
+           onUploadComplete={fetchTagList}
+         />
      </div>
    );
 }

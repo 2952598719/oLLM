@@ -69,8 +69,14 @@ redis:
 
 logging:
     level:
-        root: info
-    config: classpath:logback-spring.xml
+        # 保持 root 为 info
+        root: INFO
+        # 这是 RestClient 请求/响应的详细日志，级别设置为 DEBUG 或 TRACE
+        org.springframework.web.client.RestClient: TRACE
+        # 这是 HTTP 客户端库更底层的日志，也能提供信息
+        org.apache.hc.client5.http: DEBUG
+        # 你也可以继续为 Spring AI 开启 DEBUG
+        org.springframework.ai: DEBUG
 
 mybatis:
     mapper-locations: classpath*:mapper/**/*.xml

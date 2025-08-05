@@ -12,6 +12,7 @@ interface TagResponseDTO {
 interface KnowledgeBaseUploadModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onUploadComplete?: () => void;
 }
 
 // API Service Functions
@@ -85,7 +86,7 @@ const analyzeGitRepository = async (repoUrl: string, userName: string, token: st
   return response.text();
 };
 
-export default function KnowledgeBaseUploadModal({ isOpen, onClose }: KnowledgeBaseUploadModalProps) {
+export default function KnowledgeBaseUploadModal({ isOpen, onClose, onUploadComplete }: KnowledgeBaseUploadModalProps) {
   // State for tabs
   const [activeTab, setActiveTab] = useState<'file' | 'git'>('file');
   
@@ -205,12 +206,15 @@ export default function KnowledgeBaseUploadModal({ isOpen, onClose }: KnowledgeB
       
       // Upload files
       const result = await uploadFiles(tagId, files);
-      toast.success(result || '文件上传成功');
-      
-      // Reset form
-      setFiles([]);
-      setTagName('');
-      onClose();
+       toast.success(result || '文件上传成功');
+       
+       // 通知上传完成，触发列表刷新
+       onUploadComplete?.();
+       
+       // Reset form
+       setFiles([]);
+       setTagName('');
+       onClose();
     } catch (error) {
       console.error('Error uploading files:', error);
       toast.error(error instanceof Error ? error.message : '文件上传失败，请重试');
