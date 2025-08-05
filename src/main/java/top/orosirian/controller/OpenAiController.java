@@ -1,7 +1,6 @@
 package top.orosirian.controller;
 
 import cn.hutool.core.lang.Snowflake;
-import groovy.util.logging.Slf4j;
 import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.publisher.Flux;
 import top.orosirian.model.Response.ChatResponseDTO;
 import top.orosirian.model.Response.MessageResponseDTO;
@@ -18,6 +18,8 @@ import top.orosirian.service.inf.IAiService;
 import top.orosirian.utils.Constant;
 
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @RestController
 @RequestMapping("/api/v1/openai")
@@ -63,11 +65,15 @@ public class OpenAiController {
     // http://localhost:8090/api/v1/openai/delete_chat?chatId=xxx
     @DeleteMapping("/delete_chat")
     @InterceptorAnnotation(requireLogin = true)
-    public ResponseEntity<String> deleteChat(HttpSession session, @RequestParam Long chatId) {
+    public ResponseEntity<String> deleteChat(HttpSession session, @RequestParam String chatId) {
         Long userId = (Long) session.getAttribute(Constant.USER_SESSION_KEY);
-        openAiService.deleteChat(chatId, userId);
-        log.info("对话删除成功");
-        return ResponseEntity.ok("删除成功");
+        if (openAiService.deleteChat(Long.valueOf(chatId), userId)) {
+            log.info("对话删除成功");
+            return ResponseEntity.ok("删除成功");
+        } else {
+            return ResponseEntity.internalServerError().body("删除失败");
+        }
+
     }
 
     /**
@@ -76,9 +82,9 @@ public class OpenAiController {
     // 获取消息列表
     // http://localhost:8090/api/v1/openai/message_list?chatId=xxx
     @GetMapping("/message_list")
-    public ResponseEntity<List<MessageResponseDTO>> messageList(HttpSession session, @RequestParam Long chatId) {
+    public ResponseEntity<List<MessageResponseDTO>> messageList(HttpSession session, @RequestParam String chatId) {
         Long userId = (Long) session.getAttribute(Constant.USER_SESSION_KEY);
-        List<MessageResponseDTO> messageList = openAiService.getMessageList(chatId, userId);
+        List<MessageResponseDTO> messageList = openAiService.getMessageList(Long.valueOf(chatId), userId);
         log.info("消息列表获取成功");
         return ResponseEntity.ok(messageList);
     }
@@ -87,18 +93,40 @@ public class OpenAiController {
     // Flux是个异步数据流，不会不会立即关闭 HTTP 连接，而是将响应拆分成多个 ChatResponse 片段并持续发送
     // http://localhost:8090/api/v1/ollama/generate_stream?chatId=xxx&model=deepseek-chat&message=xxx
     @GetMapping("/generate_stream")
-    public Flux<ChatResponse> generateStream(HttpSession session, @RequestParam Long chatId, @RequestParam String model, @RequestParam String message) {
+    public SseEmitter generateStream(HttpSession session, @RequestParam String chatId, @RequestParam String model, @RequestParam String message) {
         Long userId = (Long) session.getAttribute(Constant.USER_SESSION_KEY);
-        log.info("消息生成中");
-        return openAiService.generateStream(userId, chatId, model, message);
+        log.info("用户 {} 开始请求流式生成，ChatId: {}", userId, chatId);
+
+        // 1. 创建 SseEmitter，超时时间设置为0L表示永不超时（推荐）
+        SseEmitter emitter = new SseEmitter(0L);
+
+        // 2. 使用一个单独的线程来执行耗时的业务逻辑，避免阻塞Web服务器的I/O线程
+        ExecutorService sseMvcExecutor = Executors.newSingleThreadExecutor();
+
+        sseMvcExecutor.execute(() -> {
+            try {
+                // 3. 调用修改后的 Service 方法，将 emitter 传递进去
+                openAiService.generateStream(userId, Long.valueOf(chatId), model, message, emitter);
+            } catch (Exception e) {
+                // 4. 捕获同步异常（例如之前的权限验证失败）
+                //    并通知 emitter 发生了错误
+                log.error("在准备流式响应时发生错误. ChatId: {}", chatId, e);
+                emitter.completeWithError(e);
+            }
+            // 注意：这里不再需要 emitter.complete()，因为 Service 内部的
+            // doOnComplete 或 doOnError 会负责关闭 emitter。
+        });
+
+        log.info("SseEmitter for ChatId: {} 已返回给客户端", chatId);
+        return emitter;
     }
 
     // http://localhost:8090/api/v1/ollama/generate_stream_rag?model=deepseek-r1:1.5b&message=hi
     @GetMapping("/generate_stream_rag")
-    public Flux<ChatResponse> generateStreamRag(HttpSession session, @RequestParam Long chatId, @RequestParam String model, @RequestParam String ragTag, @RequestParam String message) {
+    public Flux<ChatResponse> generateStreamRag(HttpSession session, @RequestParam String chatId, @RequestParam String model, @RequestParam String ragTag, @RequestParam String message) {
         Long userId = (Long) session.getAttribute(Constant.USER_SESSION_KEY);
         log.info("rag消息生成中");
-        return openAiService.generateStreamRag(userId, chatId, model, ragTag, message);
+        return openAiService.generateStreamRag(userId, Long.valueOf(chatId), model, ragTag, message);
     }
 
     // 还可以提供删除消息功能

@@ -39,6 +39,7 @@ CREATE TABLE messages (
     role VARCHAR(20) NOT NULL CHECK (role IN ('system', 'assistant', 'user')),
     content TEXT NOT NULL,
     status SMALLINT NOT NULL DEFAULT 1 CHECK ( status IN (0, 1) ),  -- 0表示已删除，1表示活跃
+    tag_id BIGINT,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
@@ -47,6 +48,21 @@ COMMENT ON COLUMN messages.chat_id IS '所属会话id';
 COMMENT ON COLUMN messages.role IS '消息角色';
 COMMENT ON COLUMN messages.content IS '消息内容';
 COMMENT ON COLUMN messages.status IS '消息状态';
+COMMENT ON COLUMN messages.tag_id IS '这条消息使用的知识库id，如果不使用则为空';
+
+
+DROP TABLE IF EXISTS tags;
+CREATE TABLE tags (
+    id BIGINT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    tag_name VARCHAR(255) NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+COMMENT ON COLUMN tags.id IS '知识库id';
+COMMENT ON COLUMN tags.user_id IS '所属用户id';
+COMMENT ON COLUMN tags.tag_name IS '知识库名字';
+
 
 -- 创建更新时间触发器函数
 CREATE OR REPLACE FUNCTION update_modified_column()

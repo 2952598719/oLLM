@@ -1,6 +1,8 @@
   import { useState, useRef, useEffect } from 'react';
+  import { cn } from '@/lib/utils';
   import { ChatHistory } from '@/components/chat/ChatHistory';
   import { ChatInput } from '@/components/chat/ChatInput';
+  import { TypingIndicator } from '@/components/chat/TypingIndicator';
   import { AuthModal } from '@/components/auth/AuthModal';
   import { useContext } from 'react';
   import { AuthContext } from '@/contexts/authContext';
@@ -9,13 +11,13 @@
 
 // API Response Types
 interface ChatResponseDTO {
-  chatId: number;
+  chatId: string;
   title: string;
   updatedAt: string;
 }
 
 interface MessageResponseDTO {
-  messageId: number;
+  messageId: string;
   role: 'user' | 'assistant';
   content: string;
   createdAt: string;
@@ -23,14 +25,14 @@ interface MessageResponseDTO {
 
 // Application Types
 export interface Message {
-  id: number;
+  id: string;
   content: string;
   role: 'user' | 'assistant';
   timestamp: Date;
 }
 
 export interface Conversation {
-  id: number;
+  id: string;
   title: string;
   createdAt: Date;
   messages: Message[];
@@ -51,7 +53,7 @@ const fetchChatList = async (): Promise<ChatResponseDTO[]> => {
   return response.json();
 };
 
-const createChat = async (prefixString: string): Promise<number> => {
+const createChat = async (prefixString: string): Promise<string> => {
   const response = await fetch(`${API_BASE_URL}/create_chat?prefixString=${encodeURIComponent(prefixString)}`, {
     method: 'POST',
     credentials: 'include',
@@ -61,10 +63,12 @@ const createChat = async (prefixString: string): Promise<number> => {
     throw new Error('Failed to create chat');
   }
   
-  return response.json();
-};
+  // Parse as string to preserve precision
+  const chatId = await response.text();
+  return chatId;
+}
 
-const deleteChat = async (chatId: number): Promise<void> => {
+const deleteChat = async (chatId: string): Promise<void> => {
   const response = await fetch(`${API_BASE_URL}/delete_chat?chatId=${chatId}`, {
     method: 'DELETE',
     credentials: 'include',
@@ -73,9 +77,9 @@ const deleteChat = async (chatId: number): Promise<void> => {
   if (!response.ok) {
     throw new Error('Failed to delete chat');
   }
-};
+}
 
-const fetchMessageList = async (chatId: number): Promise<MessageResponseDTO[]> => {
+const fetchMessageList = async (chatId: string): Promise<MessageResponseDTO[]> => {
   const response = await fetch(`${API_BASE_URL}/message_list?chatId=${chatId}`, {
     credentials: 'include',
   });
@@ -85,28 +89,32 @@ const fetchMessageList = async (chatId: number): Promise<MessageResponseDTO[]> =
   }
   
   return response.json();
-};
+}
 
 const generateStream = async (
-  chatId: number, 
+  chatId: string, 
   model: string, 
   message: string
 ): Promise<ReadableStream> => {
   const response = await fetch(`http://localhost:8090/api/v1/openai/generate_stream?chatId=${chatId}&model=${encodeURIComponent(model)}&message=${encodeURIComponent(message)}`, {
     method: 'GET',
     credentials: 'include',
+    headers: {
+      'Accept': 'text/event-stream', // 明确要求SSE格式
+    },
   });
   
   if (!response.ok || !response.body) {
-    throw new Error('Failed to generate stream');
+    const errorText = await response.text().catch(() => 'Unknown error');
+    throw new Error(`Failed to generate stream: ${errorText}`);
   }
   
   return response.body;
-};
+}
 
 export default function Home() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [currentConversationId, setCurrentConversationId] = useState<number | null>(null);
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -117,24 +125,18 @@ export default function Home() {
   const [isLoadingChatList, setIsLoadingChatList] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   
-// Create a new conversation
+// Create a new conversation - switches to "not in conversation" state
 const createNewConversation = () => {
-  // Create temporary conversation while waiting for API
-  const newConversation: Conversation = {
-    id: Date.now(), // Temporary ID
-    title: 'New Conversation',
-    createdAt: new Date(),
-    messages: []
-  };
-  
-  setConversations(prev => [newConversation, ...prev]);
-  setCurrentConversationId(newConversation.id);
-  setMessages([]);
-  setInput('');
+  // If in a conversation with messages, switch to no conversation state
+  if (currentConversationId !== null) {
+    setCurrentConversationId(null);
+    setMessages([]);
+    setInput('');
+  }
 };
 
 // Handle conversation selection
-const handleConversationSelect = async (conversationId: number) => {
+const handleConversationSelect = async (conversationId: string) => {
   if (conversationId === currentConversationId) return;
   
   setIsLoadingMessages(true);
@@ -194,13 +196,14 @@ useEffect(() => {
         
         // If there are conversations, set the first one as active
         if (formattedConversations.length > 0) {
-          setCurrentConversationId(formattedConversations[0].id);
-          // Load messages for the first conversation
-          handleConversationSelect(formattedConversations[0].id);
+           setCurrentConversationId(formattedConversations[0].id.toString());
+           // Load messages for the first conversation
+           handleConversationSelect(formattedConversations[0].id.toString());
         } else {
-          // If no conversations, create a new one
-          createNewConversation();
-        }
+  // If no conversations, set to no conversation state
+  setCurrentConversationId(null);
+  setMessages([]);
+}
       } catch (error) {
         console.error('Error fetching chat list:', error);
         toast.error('Failed to load conversations');
@@ -226,7 +229,7 @@ useEffect(() => {
 }, [currentConversationId, isAuthenticated]);
   
 // Delete conversation
-const deleteConversation = async (id: number) => {
+const deleteConversation = async (id: string) => {
   setIsStreaming(false);
   
   try {
@@ -252,8 +255,22 @@ const deleteConversation = async (id: number) => {
     toast.error('Failed to delete conversation');
   }
 };
-
-// Scroll to bottom when new messages arrive
+  
+  // Update conversation title based on first message
+  const updateConversationTitle = (conversationId: string, firstMessage: string) => {
+    setConversations(prev => 
+      prev.map(conv => 
+        conv.id === conversationId 
+          ? { ...conv, title: firstMessage.length > 30 
+              ? firstMessage.substring(0, 30) + '...' 
+              : firstMessage 
+            } 
+          : conv
+      )
+    );
+  };
+  
+  // Scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isStreaming]);
@@ -280,21 +297,22 @@ const handleSendMessage = async () => {
   setIsStreaming(true);
   
   try {
-    // Step 1: Create chat if this is a new conversation without an ID
-    let chatId: number;
-    if (!currentConversationId || currentConversationId.toString().startsWith('conv-')) {
-      // Create new chat - use first 10 characters of user input as prefix
-      const prefixString = userInput.substring(0, 10);
-      chatId = await createChat(prefixString);
+     // Step 1: Create chat if not in a conversation
+     let chatId: string;
+     if (currentConversationId === null) {
+       // Create new chat - use first 10 characters of user input as prefix
+       const prefixString = userInput.substring(0, 10);
+       chatId = await createChat(prefixString);
       
-      // Update the conversation with the real ID from API
-      setConversations(prev => 
-        prev.map(conv => 
-          conv.id === currentConversationId 
-            ? { ...conv, id: chatId, title: prefixString || 'New Conversation' } 
-            : conv
-        )
-      );
+      // Add the new conversation to the list
+      const newConversation: Conversation = {
+        id: chatId,
+        title: prefixString || 'New Conversation',
+        createdAt: new Date(),
+        messages: [userMessage]
+      };
+      
+      setConversations(prev => [newConversation, ...prev]);
       setCurrentConversationId(chatId);
     } else {
       chatId = currentConversationId;
@@ -314,69 +332,128 @@ const handleSendMessage = async () => {
     // Step 3: Generate stream with the message
     const stream = await generateStream(chatId, 'deepseek-chat', userInput);
     
-    // Create a reader for the stream
-    const reader = stream.getReader();
-    const decoder = new TextDecoder();
-    
-    // Create initial assistant message
-    let assistantMessageId = Date.now() + 1; // Temporary ID
-    const initialAssistantMessage: Message = {
-      id: assistantMessageId,
-      content: '',
-      role: 'assistant',
-      timestamp: new Date()
-    };
-    
-    // Add initial empty message to messages state
-    setMessages(prev => [...prev, initialAssistantMessage]);
-    
-    // Update conversation with initial assistant message
-    if (chatId) {
-      setConversations(prev => 
-        prev.map(conv => 
-          conv.id === chatId 
-            ? { ...conv, messages: [...conv.messages, initialAssistantMessage] } 
-            : conv
-        )
-      );
-    }
-    
-    // Process the stream
-    while (true) {
-      const { done, value } = await reader.read();
-      
-      if (done) break;
-      
-      // Decode the chunk and add to message
-      const chunk = decoder.decode(value, { stream: true });
-      
-      // Update the assistant message with new chunk
-      setMessages(prev => 
-        prev.map(msg => 
-          msg.id === assistantMessageId 
-            ? { ...msg, content: msg.content + chunk } 
-            : msg
-        )
-      );
-      
-      // Update conversation with new chunk
-      if (chatId) {
-        setConversations(prev => 
-          prev.map(conv => 
-            conv.id === chatId 
-              ? { 
-                  ...conv, 
-                  messages: conv.messages.map(msg => 
-                    msg.id === assistantMessageId 
-                      ? { ...msg, content: msg.content + chunk }
-                      : msg
-                  ) 
-                } 
-              : conv
-          )
-        );
-      }
-    }
+     // Create a reader for the stream
+     const reader = stream.getReader();
+     const decoder = new TextDecoder();
+     let buffer = ''; // 用于累积流数据
+     
+     // Create initial assistant message
+     let assistantMessageId = Date.now() + 1; // Temporary ID
+     const initialAssistantMessage: Message = {
+       id: assistantMessageId,
+       content: '',
+       role: 'assistant',
+       timestamp: new Date()
+     };
+     
+     // Add initial empty message to messages state
+     setMessages(prev => [...prev, initialAssistantMessage]);
+     
+     // Update conversation with initial assistant message
+     if (chatId) {
+       setConversations(prev => 
+         prev.map(conv => 
+           conv.id === chatId 
+             ? { ...conv, messages: [...conv.messages, initialAssistantMessage] } 
+             : conv
+         )
+       );
+     }
+     
+     // Process the stream - SSE format
+     while (true) {
+       const { done, value } = await reader.read();
+       
+       if (done) {
+         // 检查是否有未处理的缓冲区数据
+         if (buffer.trim()) {
+           handleSSEData(buffer.trim());
+         }
+         break;
+       }
+       
+       // 解码新块并添加到缓冲区
+       buffer += decoder.decode(value, { stream: true });
+       
+       // 分割缓冲区中的完整SSE事件 (SSE事件以"\n\n"分隔)
+       const events = buffer.split('\n\n');
+       
+       // 保留最后一个不完整的事件（如果有）
+       buffer = events.pop() || '';
+       
+       // 处理每个完整的SSE事件
+       for (const event of events) {
+         if (event.trim()) {
+           handleSSEData(event.trim());
+         }
+       }
+     }
+     
+     // 处理SSE数据字段的辅助函数
+     function handleSSEData(data: string) {
+       // SSE数据通常以"data:"开头
+       const dataPrefix = 'data:';
+       if (data.startsWith(dataPrefix)) {
+         const content = data.substring(dataPrefix.length).trim();
+         
+         if (content) {
+           // 尝试解析JSON（如果后端返回JSON格式）
+          try {
+            const parsedContent = JSON.parse(content);
+            // 提取嵌套的content字段
+            const messageContent = parsedContent.result?.output?.content || '';
+            // 检查是否结束
+            const finishReason = parsedContent.result?.output?.properties?.finishReason;
+            
+            if (messageContent) {
+              updateAssistantMessage(messageContent);
+            }
+            
+            if (finishReason === 'STOP') {
+              // 可以在这里添加流结束的处理逻辑
+              console.log('Stream completed');
+            }
+          } catch (e) {
+            console.error('Error parsing stream content:', e);
+            // 出错时不更新消息，避免显示错误内容
+           }
+         }
+       } else if (data.startsWith('error:')) {
+         // 处理错误消息
+         const errorMessage = data.substring('error:'.length).trim();
+         toast.error(`Error: ${errorMessage}`);
+       }
+     }
+     
+     // 更新助手消息的辅助函数
+     function updateAssistantMessage(content: string) {
+       // Update the assistant message with new content
+       setMessages(prev => 
+         prev.map(msg => 
+           msg.id === assistantMessageId 
+             ? { ...msg, content: msg.content + content } 
+             : msg
+         )
+       );
+       
+       // Update conversation with new content
+       if (chatId) {
+         setConversations(prev => 
+           prev.map(conv => 
+             conv.id === chatId 
+               ? { 
+                   ...conv, 
+                   messages: conv.messages.map(msg => 
+                     msg.id === assistantMessageId 
+                       ? { ...msg, content: msg.content + content }
+                       : msg
+                   ) 
+                 } 
+               : conv
+           )
+         );
+       }
+     }
     
     reader.releaseLock();
     
@@ -417,15 +494,9 @@ const handleSendMessage = async () => {
          {/* New Conversation Button */}
          <div className={`p-4 ${!sidebarOpen && 'md:p-4'}`}>
            <button
-             onClick={() => {
-               // Check if current conversation exists and has no messages
-               if (currentConversation && currentConversation.messages.length === 0) {
-                 // Don't create new conversation - just clear the input
-                 setInput('');
-                 return;
-               }
-               createNewConversation();
-             }}
+              onClick={() => {
+                createNewConversation();
+              }}
              className={`w-full py-2 px-4 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-medium transition-all duration-200 hover:opacity-90 flex items-center justify-center gap-2 ${
                !sidebarOpen && 'md:justify-center md:px-2 rounded-full'
              }`}
@@ -535,26 +606,38 @@ const handleSendMessage = async () => {
         <main className="flex-1 overflow-y-auto p-4">
           <div className="max-w-3xl mx-auto space-y-6">
              {/* Loading messages indicator */}
-             {isLoadingMessages ? (
-               <div className="flex justify-center py-12">
-                 <div className="inline-flex flex-col items-center">
-                   <div className="w-12 h-12 rounded-full border-4 border-blue-200 border-t-blue-600 animate-spin mb-4"></div>
-                   <p className="text-slate-500 dark:text-slate-400">Loading conversation...</p>
-                 </div>
-               </div>
-             ) : messages.length === 0 && !isStreaming ? (
-               <div className="text-center py-12">
-                 <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 mb-4">
-                   <i className="fa-solid fa-comments text-2xl"></i>
-                 </div>
-                 <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-200 mb-2">
-                   Welcome to AI Chat
-                 </h2>
-                 <p className="text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-                   Start typing your message below to chat with our AI assistant.
-                 </p>
-               </div>
-             ) : null}
+              {isLoadingMessages ? (
+                <div className="flex justify-center py-12">
+                  <div className="inline-flex flex-col items-center">
+                    <div className="w-12 h-12 rounded-full border-4 border-blue-200 border-t-blue-600 animate-spin mb-4"></div>
+                    <p className="text-slate-500 dark:text-slate-400">Loading conversation...</p>
+                  </div>
+                </div>
+              ) : currentConversationId === null ? (
+                <div className="text-center py-12">
+                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 mb-4">
+                    <i className="fa-solid fa-plus-circle text-2xl"></i>
+                  </div>
+                  <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-200 mb-2">
+                    No Active Conversation
+                  </h2>
+                  <p className="text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                    Type your message below to start a new conversation.
+                  </p>
+                </div>
+              ) : messages.length === 0 && !isStreaming ? (
+                <div className="text-center py-12">
+                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 mb-4">
+                    <i className="fa-solid fa-comments text-2xl"></i>
+                  </div>
+                  <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-200 mb-2">
+                    New Conversation
+                  </h2>
+                  <p className="text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                    Start typing your message below to chat with our AI assistant.
+                  </p>
+                </div>
+              ) : null}
             
             {/* Chat history */}
             <ChatHistory messages={messages} />

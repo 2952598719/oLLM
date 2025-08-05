@@ -17,6 +17,8 @@ public interface OpenAiMapper {
 
     void deleteChat(Long chatId);
 
+    void deleteMessage(Long chatId);
+
     List<MessageResponseDTO> getMessageList(Long chatId);
 
     void insertMessage(Long messageId, Long chatId, String role, String content);

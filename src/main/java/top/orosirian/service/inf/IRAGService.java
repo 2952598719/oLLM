@@ -1,15 +1,18 @@
 package top.orosirian.service.inf;
 
 import org.springframework.web.multipart.MultipartFile;
+import top.orosirian.model.Response.TagResponseDTO;
 
 import java.util.List;
 
 public interface IRAGService {
 
-    List<String> queryRagTagList();
+    List<TagResponseDTO> queryRagTagList(Long userId);
 
-    boolean uploadFile(String ragTag, List<MultipartFile> files);
+    void createTag(Long userId, String tagName);
 
-    boolean analyzeGitRepository(String repoUrl, String userName, String token) throws Exception;
+    boolean uploadFile(Long userId, Long tagId, List<MultipartFile> files);
+
+    boolean analyzeGitRepository(Long userId, String repoUrl, String userName, String token) throws Exception;
 
 }

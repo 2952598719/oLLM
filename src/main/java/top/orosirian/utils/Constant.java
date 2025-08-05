@@ -4,6 +4,8 @@ public class Constant {
 
     public static final String USER_SESSION_KEY = "user";
 
+    public static final String gitUserName = "";
+
     public static final String COMMON_PROMPT_TEMPLATE = """
             你是一名专业、友善的AI助手，名称为{ai_name}。你的核心目标是提供准确、有用的信息。
             **基础指令**

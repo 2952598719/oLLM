@@ -18,7 +18,7 @@
     <select id="getChatList" resultMap="ChatResponseDTO">
         SELECT id, title, updated_at
         FROM ollm.public.chats
-        WHERE user_id = #{userId}
+        WHERE user_id = #{userId} AND status = 1
     </select>
 
     <insert id="createChat">
@@ -30,19 +30,25 @@
     <select id="isChatBelong" resultType="java.lang.Boolean">
         SELECT COUNT(1)
         FROM ollm.public.chats
-        WHERE id = #{chatId} AND user_id = #{userId}
+        WHERE id = #{chatId} AND user_id = #{userId} AND status = 1
     </select>
 
     <update id="deleteChat">
         UPDATE ollm.public.chats
         SET status = 0
-        WHERE id = #{chatId}
+        WHERE id = #{chatId} AND status = 1
+    </update>
+
+    <update id="deleteMessage">
+        UPDATE ollm.public.messages
+        SET status = 0
+        WHERE chat_id = #{chatId} AND status = 1
     </update>
 
     <select id="getMessageList" resultMap="MessageResponseDTO">
         SELECT id, role, content, created_at
         FROM ollm.public.messages
-        WHERE chat_id = #{chatId}
+        WHERE chat_id = #{chatId} AND status = 1
         ORDER BY created_at LIMIT 50    -- 更合理的是总结摘要，用LIMIT会截断
     </select>
 

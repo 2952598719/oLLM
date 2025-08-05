@@ -119,6 +119,7 @@ public class UserController {
 
         // 插入数据库
         userService.register(email, password);
+        log.info("注册成功");
         return ResponseEntity.ok().body("注册成功");
     }
 
@@ -129,8 +130,10 @@ public class UserController {
         Long userId = userService.login(email, password);
         if (userId != -1) {
             session.setAttribute(Constant.USER_SESSION_KEY, userId);
+            log.info("登陆成功");
             return ResponseEntity.ok().body("登陆成功");
         } else {
+            log.info("登陆失败");
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("登陆失败，用户名或密码错误");
         }
     }

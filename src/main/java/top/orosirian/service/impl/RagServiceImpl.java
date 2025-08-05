@@ -1,5 +1,6 @@
 package top.orosirian.service.impl;
 
+import cn.hutool.core.lang.Snowflake;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
 import org.eclipse.jgit.api.Git;
@@ -15,6 +16,8 @@ import org.springframework.core.io.PathResource;
 import org.springframework.stereotype.Service;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.multipart.MultipartFile;
+import top.orosirian.mapper.RagMapper;
+import top.orosirian.model.Response.TagResponseDTO;
 import top.orosirian.service.inf.IRAGService;
 
 import java.io.File;
@@ -28,43 +31,46 @@ import java.util.List;
 public class RagServiceImpl implements IRAGService {
 
     @Autowired
-    private RedissonClient redissonClient;
-
-    @Autowired
     private TokenTextSplitter tokenTextSplitter;
 
     @Autowired
     private PgVectorStore pgVectorStore;
 
+    @Autowired
+    private RagMapper ragMapper;
+    @Autowired
+    private Snowflake snowflake;
+
     @Override
-    public List<String> queryRagTagList() {
-        return redissonClient.getList("ragTag");
+    public List<TagResponseDTO> queryRagTagList(Long userId) {
+        return ragMapper.getTagList(userId);
     }
 
     @Override
-    public boolean uploadFile(String ragTag, List<MultipartFile> files) {
-        log.info("上传知识库开始 {}", ragTag);
+    public void createTag(Long userId, String tagName) {
+        Long tagId = snowflake.nextId();
+        ragMapper.createTag(userId, tagId, tagName);
+    }
+
+    @Override
+    public boolean uploadFile(Long userId, Long tagId, List<MultipartFile> files) {
+        log.info("上传知识库开始 {}", tagId);
         for (MultipartFile file : files) {
             TikaDocumentReader documentReader = new TikaDocumentReader(file.getResource());
             List<Document> documents = documentReader.get();
             List<Document> documentSplitterList = tokenTextSplitter.apply(documents);
 
-            documents.forEach(doc -> doc.getMetadata().put("knowledge", ragTag));
-            documentSplitterList.forEach(doc -> doc.getMetadata().put("knowledge", ragTag));
+            documents.forEach(doc -> doc.getMetadata().put("knowledge", tagId));
+            documentSplitterList.forEach(doc -> doc.getMetadata().put("knowledge", tagId));
 
             pgVectorStore.accept(documentSplitterList);
-
-            RList<String> elements = redissonClient.getList("ragTag");
-            if (!elements.contains(ragTag)) {
-                elements.add(ragTag);
-            }
         }
-        log.info("上传知识库结束 {}", ragTag);
+        log.info("上传知识库结束 {}", tagId);
         return true;
     }
 
     @Override
-    public boolean analyzeGitRepository(@RequestParam String repoUrl, @RequestParam String userName, @RequestParam String token) throws Exception {
+    public boolean analyzeGitRepository(Long userId, @RequestParam String repoUrl, @RequestParam String userName, @RequestParam String token) throws Exception {
         String repoProjectName = extractProjectName(repoUrl);
         String localPath = String.format("./additional/repos/%s/%s", userName, repoProjectName);
         log.info("克隆路径: {}", new File(localPath).getAbsolutePath());
@@ -111,11 +117,8 @@ public class RagServiceImpl implements IRAGService {
 
         FileUtils.deleteDirectory(new File(localPath));
 
-        RList<String> elements = redissonClient.getList("ragTag");
-        if (!elements.contains(repoProjectName)) {
-            elements.add(repoProjectName);
-        }
-
+        Long tagId = snowflake.nextId();
+        ragMapper.createTag(userId, tagId, repoProjectName);
 
         log.info("遍历解析路径，上传完成: {}", repoUrl);
         return true;
@@ -126,5 +129,8 @@ public class RagServiceImpl implements IRAGService {
         String projectNameWithGit = parts[parts.length - 1];
         return projectNameWithGit.replace(".git", "");
     }
+
+
+    // 还有删除tag功能
 
 }

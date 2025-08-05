@@ -2,17 +2,17 @@ package top.orosirian.model.Response;
 
 import lombok.Data;
 
-import java.time.LocalDateTime;
+import java.sql.Timestamp;
 
 @Data
 public class MessageResponseDTO {
 
-    public Long messageId;
+    public String messageId;
 
     public String role;
 
     public String content;
 
-    public LocalDateTime createdAt;
+    public Timestamp createdAt;
 
 }

@@ -1,6 +1,7 @@
 package top.orosirian.service.inf;
 
 import org.springframework.ai.chat.ChatResponse;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.publisher.Flux;
 import top.orosirian.model.Response.ChatResponseDTO;
 import top.orosirian.model.Response.MessageResponseDTO;
@@ -16,7 +17,7 @@ public interface IAiService {
 
     void createChat(Long chatId, Long userId, String prefixString);
 
-    void deleteChat(Long chatId, Long userId);
+    boolean deleteChat(Long chatId, Long userId);
 
     /**
      * 消息相关
@@ -25,7 +26,7 @@ public interface IAiService {
 
 //    ChatResponse generate(String model, String message);
 
-    Flux<ChatResponse> generateStream(Long userId, Long chatId, String model, String message);
+    void generateStream(Long userId, Long chatId, String model, String message, SseEmitter emitter);
 
     Flux<ChatResponse> generateStreamRag(Long userId, Long chatId, String ragTag, String model, String message);
 
