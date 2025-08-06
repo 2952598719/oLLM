@@ -39,6 +39,11 @@ spring:
                     model: text-embedding-ada-002
         rag:
             embed: nomic-embed-text
+        mcp:
+            client:
+                request-timeout: 360s
+                stdio:
+                    servers-configuration: classpath:/mcp/mcp-servers-config.json
     mail:
         host: smtp.qq.com
         port: 465

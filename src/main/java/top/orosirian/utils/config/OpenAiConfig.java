@@ -1,8 +1,13 @@
 package top.orosirian.utils.config;
 
+import io.micrometer.observation.ObservationRegistry;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.DefaultChatClientBuilder;
+import org.springframework.ai.chat.client.observation.ChatClientObservationConvention;
 import org.springframework.ai.ollama.OllamaEmbeddingModel;
 import org.springframework.ai.ollama.api.OllamaApi;
 import org.springframework.ai.ollama.api.OllamaOptions;
+import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiEmbeddingModel;
 import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
@@ -14,7 +19,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 @Configuration
-public class OllamaConfig {
+public class OpenAiConfig {
 
     @Bean
     public OllamaApi ollamaApi(@Value("${spring.ai.ollama.base-url}") String baseUrl) {
@@ -58,6 +63,11 @@ public class OllamaConfig {
         return PgVectorStore.builder(jdbcTemplate, embeddingModel)
                 .vectorTableName("vector_store")
                 .build();
+    }
+
+    @Bean
+    public ChatClient.Builder chatClientBuilder(OpenAiChatModel openAiChatModel) {
+        return new DefaultChatClientBuilder(openAiChatModel, ObservationRegistry.NOOP, (ChatClientObservationConvention) null);
     }
 
 
