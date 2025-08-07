@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="top.orosirian.mapper.UserMapper">
+
+    <select id="isEmailExist" resultType="java.lang.Boolean">
+        SELECT COUNT(1)
+        FROM ollm.public.users
+        WHERE email = #{email}
+    </select>
+
+    <select id="getPassword" resultType="java.lang.String">
+        SELECT password
+        FROM ollm.public.users
+        WHERE email = #{email}
+    </select>
+
+    <insert id="register">
+        INSERT
+        INTO ollm.public.users(id, email, password)
+        VALUES(#{id}, #{email}, #{password})
+    </insert>
+
+    <select id="getUserId" resultType="java.lang.Long">
+        SELECT id
+        FROM ollm.public.users
+        WHERE email = #{email}
+    </select>
+
+</mapper>

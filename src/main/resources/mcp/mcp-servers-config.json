@@ -1,0 +1,23 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "/Users/peenpjchen/.nvm/versions/node/v22.17.1/bin/npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/Users/peenpjchen/Desktop",
+        "/Users/peenpjchen/Desktop"
+      ]
+    },
+    "my-mcp-server": {
+      "command": "java",
+      "args": [
+        "-Dfile.encoding=utf-8",
+        "-Dspring.ai.mcp.server.stdio=true",
+        "-jar",
+        "/Users/peenpjchen/.m2/repository/top/orosirian/mcp/1.0.0/mcp-1.0.0.jar"
+      ]
+    }
+  }
+}
+

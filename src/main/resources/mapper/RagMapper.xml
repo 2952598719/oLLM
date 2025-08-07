@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="top.orosirian.mapper.RagMapper">
+
+    <resultMap id="TagResponseDTO" type="top.orosirian.model.Response.TagResponseDTO">
+        <id property="tagId" column="id"/>
+        <result property="tagName" column="tag_name"/>
+    </resultMap>
+
+    <select id="getTagList" resultMap="TagResponseDTO">
+        SELECT id, tag_name
+        FROM ollm.public.tags
+        WHERE user_id = #{userId}
+    </select>
+
+    <insert id="createTag">
+        INSERT
+        INTO ollm.public.tags(id, user_id, tag_name)
+        VALUES(#{tagId}, #{userId}, #{tagName})
+    </insert>
+
+
+
+</mapper>

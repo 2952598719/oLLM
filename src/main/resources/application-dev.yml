@@ -1,0 +1,87 @@
+server:
+    port: 8090
+    servlet:
+        session:
+            timeout: 1800
+            cookie:
+                http-only: true
+                secure: true
+                same-site: lax
+
+spring:
+    datasource:
+        driver-class-name: org.postgresql.Driver
+        username: postgres
+        password: postgres
+        url: jdbc:postgresql://127.0.0.1:5432/ollm
+        type: com.zaxxer.hikari.HikariDataSource
+        hikari:     # hikari连接池配置
+            pool-name: HikariCP     # 连接池名
+            minimum-idle: 5         # 最小空闲连接数
+            idle-timeout: 600000    # 连接空闲10分钟后过期
+            maximum-pool-size: 10   # 连接池最大连接数
+            auto-commit: true       # 从池中返回的连接的默认自动提交行为
+            max-lifetime: 1800000   # 池中连接的最长生命周期，0表示无限生命周期，默认30分钟
+            connection-timeout: 30000           # 数据库连接超时时间,默认30秒
+            connection-test-query: SELECT 1     # 连接测试采用哪句SQL
+    ai:
+        ollama:
+            base-url: http://127.0.0.1:11434
+            embedding:
+                options:
+                    num-batch: 512
+                model: nomic-embed-text
+        openai:
+            base-url: https://api.deepseek.com
+            api-key: sk-2ed07b90822945f891d01c4a73729ca8
+            embedding:
+                options:
+                    model: text-embedding-ada-002
+        rag:
+            embed: nomic-embed-text
+        mcp:
+            client:
+                request-timeout: 360s
+                stdio:
+                    servers-configuration: classpath:/mcp/mcp-servers-config.json
+    mail:
+        host: smtp.qq.com
+        port: 465
+        username: 2952598719@qq.com
+        password: pdsoqqqyatlmdfgg
+        default-encoding: utf-8
+        properties:
+            mail:
+                smtp:
+                    socketFactory:
+                        class: javax.net.ssl.SSLSocketFactory
+                debug: true
+
+
+redis:
+    sdk:
+        config:
+            host: 127.0.0.1
+            port: 6379
+            pool-size: 10
+            min-idle-size: 5
+            idle-timeout: 5000
+            connect-timeout: 5000
+            retry-attempts: 3
+            retry-interval: 1000
+            ping-interval: 60000
+            keep-alive: true
+
+logging:
+    level:
+        # 保持 root 为 info
+        root: INFO
+        # 这是 RestClient 请求/响应的详细日志，级别设置为 DEBUG 或 TRACE
+        org.springframework.web.client.RestClient: TRACE
+        # 这是 HTTP 客户端库更底层的日志，也能提供信息
+        org.apache.hc.client5.http: DEBUG
+        # 你也可以继续为 Spring AI 开启 DEBUG
+        org.springframework.ai: DEBUG
+
+mybatis:
+    mapper-locations: classpath*:mapper/**/*.xml
