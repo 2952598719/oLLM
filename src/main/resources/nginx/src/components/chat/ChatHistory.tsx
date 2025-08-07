@@ -14,6 +14,7 @@ export function ChatHistory({ messages }: ChatHistoryProps) {
           content={message.content} 
           role={message.role} 
           timestamp={message.timestamp} 
+          isLoading={message.isLoading}
         />
       ))}
     </div>

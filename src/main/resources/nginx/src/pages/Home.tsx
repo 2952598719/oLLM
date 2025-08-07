@@ -35,6 +35,7 @@ export interface Message {
   content: string;
   role: 'user' | 'assistant';
   timestamp: Date;
+  isLoading?: boolean;
 }
 
 export interface Conversation {
@@ -97,14 +98,16 @@ const fetchMessageList = async (chatId: string): Promise<MessageResponseDTO[]> =
   return response.json();
 }
 
-const generateStream = async (
+   const generateStream = async (
   chatId: string, 
   model: string, 
   message: string,
-  tagId?: string
+  tagId?: string,
+  toolModeEnabled: boolean
 ): Promise<ReadableStream> => {
-  const endpoint = tagId && tagId.trim() ? 'generate_stream_rag' : 'generate_stream';
-  let url = `http://localhost:8090/api/v1/openai/${endpoint}?chatId=${chatId}&model=${encodeURIComponent(model)}&message=${encodeURIComponent(message)}`;
+    // 统一入口，使用相同的endpoint
+    const isRagRequest = tagId && tagId.trim() !== '';
+  let url = `http://localhost:8090/api/v1/openai/generate_stream?chatId=${chatId}&model=${encodeURIComponent(model)}&message=${encodeURIComponent(message)}&useTool=${toolModeEnabled}`;
   
   // Add tagId parameter if selected
   if (tagId && tagId.trim()) {
@@ -146,6 +149,7 @@ export default function Home() {
   const [tagList, setTagList] = useState<TagResponseDTO[]>([]);
   const [selectedTagId, setSelectedTagId] = useState('');
   const [isLoadingTags, setIsLoadingTags] = useState(false);
+  const [toolModeEnabled, setToolModeEnabled] = useState(false);
   
   // Fetch knowledge base list
   const fetchTagList = async () => {
@@ -183,6 +187,10 @@ const createNewConversation = () => {
 
 // Handle conversation selection
 const handleConversationSelect = async (conversationId: string) => {
+   if (isStreaming) {
+  return;
+  }
+  
   if (conversationId === currentConversationId) return;
   
   setIsLoadingMessages(true);
@@ -216,12 +224,15 @@ const handleConversationSelect = async (conversationId: string) => {
   } finally {
     setIsLoadingMessages(false);
   }
-};
-  
-// Get current conversation
-const currentConversation = conversations.find(
-  conv => conv.id === currentConversationId
-);
+    // 重置工具模式和知识库选择
+    setToolModeEnabled(false);
+    setSelectedTagId('');
+  };
+   
+  // Get current conversation
+  const currentConversation = conversations.find(
+    conv => conv.id === currentConversationId
+  );
 
 // Fetch chat list when authenticated
 useEffect(() => {
@@ -352,12 +363,25 @@ const handleSendMessage = async () => {
     timestamp: new Date()
   };
   
-  // Update messages with user input
-  setMessages(prev => [...prev, userMessage]);
-  
-  // Clear input immediately after sending
-  setInput('');
-  setIsStreaming(true);
+   // Update messages with user input
+   setMessages(prev => [...prev, userMessage]);
+   
+   // Create initial assistant message with loading state immediately
+   let assistantMessageId = Date.now() + 1; // Temporary ID
+   const initialAssistantMessage: Message = {
+     id: assistantMessageId,
+     content: '',
+     role: 'assistant',
+     timestamp: new Date(),
+     isLoading: true
+   };
+   
+   // Add initial assistant message with loading state
+   setMessages(prev => [...prev, initialAssistantMessage]);
+   
+   // Clear input immediately after sending
+   setInput('');
+   setIsStreaming(true);
   
   try {
      // Step 1: Create chat if not in a conversation
@@ -394,35 +418,23 @@ const handleSendMessage = async () => {
     
     // Step 3: Generate stream with the message
       // 传入选中的tagId，如果有的话
-      const stream = await generateStream(chatId, 'deepseek-chat', userInput, selectedTagId);
+      const stream = await generateStream(chatId, 'deepseek-chat', userInput, selectedTagId, toolModeEnabled);
     
      // Create a reader for the stream
      const reader = stream.getReader();
      const decoder = new TextDecoder();
      let buffer = ''; // 用于累积流数据
      
-     // Create initial assistant message
-     let assistantMessageId = Date.now() + 1; // Temporary ID
-     const initialAssistantMessage: Message = {
-       id: assistantMessageId,
-       content: '',
-       role: 'assistant',
-       timestamp: new Date()
-     };
-     
-     // Add initial empty message to messages state
-     setMessages(prev => [...prev, initialAssistantMessage]);
-     
-     // Update conversation with initial assistant message
-     if (chatId) {
-       setConversations(prev => 
-         prev.map(conv => 
-           conv.id === chatId 
-             ? { ...conv, messages: [...conv.messages, initialAssistantMessage] } 
-             : conv
-         )
-       );
-     }
+      // Update conversation with initial assistant message
+      if (chatId) {
+        setConversations(prev => 
+          prev.map(conv => 
+            conv.id === chatId 
+              ? { ...conv, messages: [...conv.messages, initialAssistantMessage] } 
+              : conv
+          )
+        );
+      }
      
      // Process the stream - SSE format
      while (true) {
@@ -492,12 +504,12 @@ const handleSendMessage = async () => {
      // 更新助手消息的辅助函数
      function updateAssistantMessage(content: string) {
        // Update the assistant message with new content
-       setMessages(prev => 
-         prev.map(msg => 
-           msg.id === assistantMessageId 
-             ? { ...msg, content: msg.content + content } 
-             : msg
-         )
+        setMessages(prev => 
+          prev.map(msg => 
+            msg.id === assistantMessageId 
+              ? { ...msg, content: msg.content + content, isLoading: false } 
+              : msg
+          )
        );
        
        // Update conversation with new content
@@ -557,17 +569,20 @@ const handleSendMessage = async () => {
          
          {/* New Conversation Button */}
          <div className={`p-4 ${!sidebarOpen && 'md:p-4'}`}>
-           <button
-              onClick={() => {
-                createNewConversation();
-              }}
-             className={`w-full py-2 px-4 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-medium transition-all duration-200 hover:opacity-90 flex items-center justify-center gap-2 ${
+            <button
+             onClick={() => {
+  if (!isStreaming) {
+    createNewConversation();
+  }
+}}
+              disabled={isStreaming}
+              className={`w-full py-2 px-4 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-medium transition-all duration-200 hover:opacity-90 flex items-center justify-center gap-2 ${
                !sidebarOpen && 'md:justify-center md:px-2 rounded-full'
-             }`}
-           >
-             <i className="fa-solid fa-plus"></i>
-             {sidebarOpen && <span>New Chat</span>}
-           </button>
+             } ${isStreaming ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              <i className="fa-solid fa-plus"></i>
+              {sidebarOpen && <span>New Chat</span>}
+            </button>
          </div>
         
          {/* Conversation List */}
@@ -584,50 +599,58 @@ const handleSendMessage = async () => {
            ) : sidebarOpen ? (
              <div className="space-y-1">
                {conversations.map((conversation) => (
-                 <div 
-                   key={conversation.id}
-                   onClick={() => handleConversationSelect(conversation.id)}
-                   className={`p-3 rounded-lg cursor-pointer transition-all duration-200 flex items-center justify-between ${
-                     currentConversationId === conversation.id
-                       ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800'
-                       : 'hover:bg-slate-100 dark:hover:bg-slate-800'
-                   }`}
-                 >
-                   <div className="flex-1 min-w-0">
-                     <h3 className="font-medium text-sm truncate">{conversation.title}</h3>
-                     <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                       {new Date(conversation.createdAt).toLocaleTimeString()}
-                     </p>
-                   </div>
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteConversation(conversation.id);
-                      }}
-                       className="ml-2 text-gray-500 hover:text-red-500 p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800"
-                     
-                     >
-                      <i className="fa-solid fa-trash"></i>
-                   </button>
-                 </div>
+                  <div 
+                    key={conversation.id}
+                    onClick={() => !isStreaming && handleConversationSelect(conversation.id)}
+                    className={`p-3 rounded-lg cursor-pointer transition-all duration-200 flex items-center justify-between ${
+                      currentConversationId === conversation.id
+                        ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800'
+                        : isStreaming 
+                          ? 'opacity-50 cursor-not-allowed' 
+                          : 'hover:bg-slate-100 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-medium text-sm truncate">{conversation.title}</h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                        {new Date(conversation.createdAt).toLocaleTimeString()}
+                      </p>
+                    </div>
+                     <button 
+                       onClick={(e) => {
+                         e.stopPropagation();
+                         if (!isStreaming) {
+                           deleteConversation(conversation.id);
+                         } else {
+                           toast.info('Please wait for the current response to complete before deleting this chat');
+                         }
+                       }}
+                        className={`ml-2 text-gray-500 hover:text-red-500 p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 ${isStreaming ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      
+                      >
+                       <i className="fa-solid fa-trash"></i>
+                    </button>
+                  </div>
                ))}
              </div>
            ) : (
-             <div className="flex flex-col items-center space-y-3">
-               {conversations.map((conversation) => (
-                 <div 
-                   key={conversation.id}
-                   onClick={() => handleConversationSelect(conversation.id)}
-                   className={`w-10 h-10 rounded-full flex items-center justify-center cursor-pointer transition-all duration-200 ${
-                     currentConversationId === conversation.id
-                       ? 'bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-500 dark:border-blue-400'
-                       : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700'
-                   }`}
-                 >
-                   <i className="fa-solid fa-comment"></i>
-                 </div>
-               ))}
-             </div>
+              <div className="flex flex-col items-center space-y-3">
+                {conversations.map((conversation) => (
+                  <div 
+                    key={conversation.id}
+                    onClick={() => !isStreaming && handleConversationSelect(conversation.id)}
+                    className={`w-10 h-10 rounded-full flex items-center justify-center cursor-pointer transition-all duration-200 ${
+                      currentConversationId === conversation.id
+                        ? 'bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-500 dark:border-blue-400'
+                        : isStreaming
+                          ? 'bg-slate-100 dark:bg-slate-800 opacity-50 cursor-not-allowed'
+                          : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    <i className="fa-solid fa-comment"></i>
+                  </div>
+                ))}
+              </div>
            )}
          </div>
       </div>
@@ -649,8 +672,19 @@ const handleSendMessage = async () => {
            
             <div className="flex items-center gap-4">
                 {/* 知识库选择下拉框和上传按钮 - 仅登录用户可见 */}
-                {isAuthenticated && (
-                  <div className="flex items-center gap-4">
+                 {isAuthenticated && (
+                   <div className="flex items-center gap-4">
+                     {/* 工具模式切换按钮 */}
+                     <button
+                       onClick={() => setToolModeEnabled(!toolModeEnabled)}
+                       className={`p-2 rounded-lg transition-all duration-200 ${
+                         toolModeEnabled
+                           ? 'bg-blue-600 text-white'
+                           : 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200'
+                       }`}
+                     >
+                       <i className="fa-solid fa-wrench"></i>
+                     </button>
                     {/* 知识库选择下拉框 */}
                     <div className="relative">
                       <select
@@ -743,7 +777,7 @@ const handleSendMessage = async () => {
             {/* Chat history */}
             <ChatHistory messages={messages} />
              
-            
+
             {/* Scroll anchor */}
             <div ref={messagesEndRef} />
           </div>

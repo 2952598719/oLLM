@@ -10,6 +10,6 @@ public enum StringType {
     ALL_CHARACTER(0),
     NUMBER(1);
 
-    private int code;
+    private final int code;
 
 }

@@ -67,8 +67,7 @@ public class OpenAiConfig {
 
     @Bean
     public ChatClient.Builder chatClientBuilder(OpenAiChatModel openAiChatModel) {
-        return new DefaultChatClientBuilder(openAiChatModel, ObservationRegistry.NOOP, (ChatClientObservationConvention) null);
+        return new DefaultChatClientBuilder(openAiChatModel, ObservationRegistry.NOOP, null);
     }
-
 
 }

@@ -91,60 +91,24 @@ public class OpenAiController {
     // Flux是个异步数据流，不会不会立即关闭 HTTP 连接，而是将响应拆分成多个 ChatResponse 片段并持续发送
     // http://localhost:8090/api/v1/ollama/generate_stream?chatId=xxx&model=deepseek-chat&message=xxx
     @GetMapping("/generate_stream")
-    public SseEmitter generateStream(HttpSession session, @RequestParam String chatId, @RequestParam String model, @RequestParam String message) {
-        Long userId = (Long) session.getAttribute(Constant.USER_SESSION_KEY);
-        log.info("用户 {} 开始请求流式生成，ChatId: {}", userId, chatId);
-
-        // 1. 创建 SseEmitter，超时时间设置为0L表示永不超时（推荐）
-        SseEmitter emitter = new SseEmitter(0L);
-
-        // 2. 使用一个单独的线程来执行耗时的业务逻辑，避免阻塞Web服务器的I/O线程
-        ExecutorService sseMvcExecutor = Executors.newSingleThreadExecutor();
-
-        sseMvcExecutor.execute(() -> {
-            try {
-                // 3. 调用修改后的 Service 方法，将 emitter 传递进去
-                openAiService.generateStream(userId, Long.valueOf(chatId), model, message, emitter);
-            } catch (Exception e) {
-                // 4. 捕获同步异常（例如之前的权限验证失败）
-                //    并通知 emitter 发生了错误
-                log.error("在准备流式响应时发生错误. ChatId: {}", chatId, e);
-                emitter.completeWithError(e);
-            }
-            // 注意：这里不再需要 emitter.complete()，因为 Service 内部的
-            // doOnComplete 或 doOnError 会负责关闭 emitter。
-        });
-
-        log.info("SseEmitter for ChatId: {} 已返回给客户端", chatId);
-        return emitter;
-    }
-
-    // http://localhost:8090/api/v1/ollama/generate_stream_rag?model=deepseek-r1:1.5b&message=hi
-    @GetMapping("/generate_stream_rag")
-    public SseEmitter generateStreamRag(HttpSession session, @RequestParam String chatId, @RequestParam String model, @RequestParam String tagId, @RequestParam String message) {
-        Long userId = (Long) session.getAttribute(Constant.USER_SESSION_KEY);
-        log.info("用户 {} 开始请求流式rag生成，ChatId: {}", userId, chatId);
-
-        // 1. 创建 SseEmitter，超时时间设置为0L表示永不超时（推荐）
-        SseEmitter emitter = new SseEmitter(0L);
-
-        // 2. 使用一个单独的线程来执行耗时的业务逻辑，避免阻塞Web服务器的I/O线程
-        ExecutorService sseMvcExecutor = Executors.newSingleThreadExecutor();
-
-        sseMvcExecutor.execute(() -> {
-            try {
-                // 3. 调用修改后的 Service 方法，将 emitter 传递进去
-                openAiService.generateStreamRag(userId, Long.valueOf(chatId), tagId, model, message, emitter);
-            } catch (Exception e) {
-                // 4. 捕获同步异常（例如之前的权限验证失败）
-                //    并通知 emitter 发生了错误
-                log.error("在准备流式rag响应时发生错误. ChatId: {}", chatId, e);
-                emitter.completeWithError(e);
-            }
-            // 注意：这里不再需要 emitter.complete()，因为 Service 内部的
-            // doOnComplete 或 doOnError 会负责关闭 emitter。
-        });
-
+    public SseEmitter generateStream(HttpSession session,
+            @RequestParam String chatId, @RequestParam String model, @RequestParam String message,
+            @RequestParam boolean useTool, @RequestParam(required = false) String tagId) {
+        SseEmitter emitter = new SseEmitter(0L);    // 0L表示永不过时
+        // 独立线程执行远程api的请求，避免阻塞web服务
+        try (ExecutorService sseMvcExecutor = Executors.newSingleThreadExecutor()) {
+            Long userId = (Long) session.getAttribute(Constant.USER_SESSION_KEY);
+            log.info("用户 {} 开始请求流式生成，ChatId: {}", userId, chatId);
+            sseMvcExecutor.execute(() -> {
+                try {
+                    Long tagIdNum = tagId == null ? null : Long.parseLong(tagId);
+                    openAiService.generateStream(userId, Long.valueOf(chatId), model, message, emitter, useTool, tagIdNum);
+                } catch (Exception e) {
+                    log.error("在准备流式响应时发生错误. ChatId: {}", chatId, e);
+                    emitter.completeWithError(e);   // 如果正常执行，则service内会关闭emitter，因此异常情况下手动关闭
+                }
+            });
+        }
         log.info("SseEmitter for ChatId: {} 已返回给客户端", chatId);
         return emitter;
     }

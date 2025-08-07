@@ -9,7 +9,7 @@
         "/Users/peenpjchen/Desktop"
       ]
     },
-    "mcp-server-computer": {
+    "my-mcp-server": {
       "command": "java",
       "args": [
         "-Dfile.encoding=utf-8",

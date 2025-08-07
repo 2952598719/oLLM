@@ -1,6 +1,5 @@
 package top.orosirian.service.impl;
 
-import cn.hutool.core.lang.Snowflake;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
 import org.eclipse.jgit.api.Git;

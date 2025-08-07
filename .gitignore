@@ -35,4 +35,6 @@ replay_pid*
 ### Idea ###
 .idea/
 
+.vite/
+
 src/main/resources/nginx/node_modules

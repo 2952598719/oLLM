@@ -24,8 +24,12 @@ public interface IAiService {
 
 //    ChatResponse generate(String model, String message);
 
-    void generateStream(Long userId, Long chatId, String model, String message, SseEmitter emitter);
+    void generateStream(Long userId, Long chatId, String model, String message, SseEmitter emitter, boolean useTool, Long tagId);
 
-    void generateStreamRag(Long userId, Long chatId, String tagId, String model, String message, SseEmitter emitter);
+//    void generateStreamRag(Long userId, Long chatId, String model, String message, SseEmitter emitter, boolean useTool, String tagId);
+//
+//    void generateStreamTool(Long userId, Long chatId, String model, String message, SseEmitter emitter);
+//
+//    void generateStreamRagTool(Long userId, Long chatId, String tagId, String model, String message, SseEmitter emitter);
 
 }
