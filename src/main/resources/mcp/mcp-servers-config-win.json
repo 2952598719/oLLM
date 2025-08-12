@@ -1,0 +1,24 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "D:/software/nodejs/npx.cmd",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "C:/Users/29525/Desktop",
+        "C:/Users/29525/Desktop"
+      ]
+    },
+    "myMcpServer": {
+      "command": "java",
+      "args": [
+        "-Dfile.encoding=utf-8",
+        "-Dspring.ai.mcp.server.stdio=true",
+        "-Dlogging.level.root=OFF",
+        "-jar",
+        "D:/software/maven/repository/top/orosirian/mcp/1.0.0/mcp-1.0.0.jar"
+      ]
+    }
+  }
+}
+

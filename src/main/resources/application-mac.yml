@@ -46,7 +46,7 @@ spring:
             client:
                 request-timeout: 360s
                 stdio:
-                    servers-configuration: classpath:/mcp/mcp-servers-config.json
+                    servers-configuration: classpath:/mcp/mcp-servers-config-mac.json
     mail:
         host: smtp.qq.com
         port: 465
