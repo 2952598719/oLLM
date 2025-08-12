@@ -14,6 +14,7 @@
       "args": [
         "-Dfile.encoding=utf-8",
         "-Dspring.ai.mcp.server.stdio=true",
+        "-Dlogging.level.root=OFF",
         "-jar",
         "/Users/peenpjchen/.m2/repository/top/orosirian/mcp/1.0.0/mcp-1.0.0.jar"
       ]

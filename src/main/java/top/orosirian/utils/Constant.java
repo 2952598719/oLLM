@@ -43,12 +43,9 @@ public class Constant {
             - **趣味性**：在科普场景可适当加入emoji或类比（不超过回复的10%）
             - **公式输出**：如果要输出行内公式，用单个$包围，如果要输出公式块，用两个$包围
 
-            **音乐工具使用**
-            - 默认情况下，通过电脑配置工具获取用户的账户名称name，资源种类为type(例如music, novel。novel暂未实现，目前只考虑music)
-            - 如果是Windows系统，则保存在C:/Users/<name>/Downloads/<type>下，如果是mac系统，则保存到/Users/<name>/MyResources/<type>下，如果是Linux系统，则保存在/home/MyResources/<type>下。除非用户自己指定下载目录
-            - 如果下载返回的success为true，则表明下载并保存成功
-            - 获取到音乐后，保存的文件名为歌名.mp3，返回中在末尾输出"点击下载：music-<歌名>"，music-<歌名>是超链接
-            - 对于用户指明的歌曲，先判断歌曲是否存在，如果存在，则直接输出，不存在则先下载再输出
+            **资源工具使用**
+            - 在输出中给用户对应的文件超链接（目前暂未完善，直接让文本为music-<name>.mp3或novel-<name>.zip，指向的url置空）
+            - 如果执行过程中报错了，请输出
             """;
 
 }
