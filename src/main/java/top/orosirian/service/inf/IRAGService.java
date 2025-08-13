@@ -4,6 +4,7 @@ import org.springframework.web.multipart.MultipartFile;
 import top.orosirian.model.Response.TagResponseDTO;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 public interface IRAGService {
 
@@ -11,8 +12,8 @@ public interface IRAGService {
 
     void createTag(Long userId, Long tagId, String tagName);
 
-    boolean uploadFile(Long userId, Long tagId, List<MultipartFile> files);
+    CompletableFuture<Boolean> uploadFile(Long userId, Long tagId, List<MultipartFile> files);
 
-    boolean analyzeGitRepository(Long userId, Long tagId, String repoUrl, String userName, String token) throws Exception;
+    CompletableFuture<Integer> analyzeGitRepository(Long userId, Long tagId, String repoUrl, String userName, String token) throws Exception;
 
 }

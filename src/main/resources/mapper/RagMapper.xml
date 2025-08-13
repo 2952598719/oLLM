@@ -19,6 +19,4 @@
         VALUES(#{tagId}, #{userId}, #{tagName})
     </insert>
 
-
-
 </mapper>

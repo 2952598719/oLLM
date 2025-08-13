@@ -15,6 +15,15 @@
         <result property="createdAt" column="created_at"/>
     </resultMap>
 
+    <select id="testConcurrent" resultType="java.lang.String">
+        SELECT title
+        FROM ollm.public.chats
+        WHERE id = 1952629403364233216
+    </select>
+
+
+
+
     <select id="getChatList" resultMap="ChatResponseDTO">
         SELECT id, title, updated_at
         FROM ollm.public.chats

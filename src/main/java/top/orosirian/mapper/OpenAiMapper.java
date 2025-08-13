@@ -9,6 +9,10 @@ import java.util.List;
 @Mapper
 public interface OpenAiMapper {
 
+    String testConcurrent();
+
+
+
     List<ChatResponseDTO> getChatList(Long userId);
 
     void createChat(Long chatId, Long userId, String title);
@@ -24,6 +28,5 @@ public interface OpenAiMapper {
     void insertMessage(Long messageId, Long chatId, String role, String content);
 
     void insertMessageWithRag(Long messageId, Long chatId, Long tagId, String role, String content);
-
 
 }

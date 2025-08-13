@@ -15,6 +15,8 @@ import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import top.orosirian.model.Response.ChatResponseDTO;
@@ -48,15 +50,22 @@ public class OpenAiServiceImpl implements IAiService {
     @Autowired
     private ToolCallbackProvider tools;
 
+    @Override
+    public String testConcurrent() {
+        return openAiMapper.testConcurrent();
+    }
+
     /**
      * 对话相关
      */
     @Override
+    @Cacheable(value = "chatList", key = "#userId")
     public List<ChatResponseDTO> getChatList(Long userId) {
         return openAiMapper.getChatList(userId);
     }
 
     @Override
+    @CacheEvict(value = "chatList", key = "#userId") // 创建新对话时，清空该用户的对话列表缓存
     public void createChat(Long chatId, Long userId, String prefixString) {
         openAiMapper.createChat(chatId, userId, prefixString);
     }
@@ -79,6 +88,7 @@ public class OpenAiServiceImpl implements IAiService {
      * 消息相关
      */
     @Override
+    @Cacheable(value = "messageList", key = "#chatId") // 缓存某个对话的历史消息
     public List<MessageResponseDTO> getMessageList(Long chatId, Long userId) {
         if (!openAiMapper.isChatBelong(chatId, userId)) {
             return null;
@@ -176,6 +186,15 @@ public class OpenAiServiceImpl implements IAiService {
                     emitter.completeWithError(throwable);   // 通知 emitter 发生了错误，这将关闭客户端的连接
                 })
                 .subscribe();   // 调用 subscribe() 来启动整个过程
+    }
+
+    // 在 generateStream 方法中，当AI响应成功保存后，需要清空对应chatId的消息缓存
+    // 可以通过注入自身代理或使用 ApplicationContext.getBean() 来调用下面的方法以触发缓存清除
+    @Override
+    @CacheEvict(value = "messageList", key = "#chatId")
+    public void clearMessageCache(Long chatId) {
+        // 此方法体可以为空，主要用于触发@CacheEvict注解
+        log.info("Clearing message cache for chatId: {}", chatId);
     }
 
 }

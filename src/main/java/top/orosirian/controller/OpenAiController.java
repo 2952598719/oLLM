@@ -16,12 +16,10 @@ import top.orosirian.service.inf.IAiService;
 import top.orosirian.utils.Constant;
 
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.Executor;
 
 @RestController
 @RequestMapping("/api/v1/openai")
-// 先不搞session
 public class OpenAiController {
 
     private static final Logger log = LoggerFactory.getLogger(OpenAiController.class);
@@ -31,6 +29,17 @@ public class OpenAiController {
 
     @Autowired
     private Snowflake snowflake;
+
+    @Autowired
+    @Qualifier("taskExecutor") // 注入全局线程池
+    private Executor taskExecutor;
+
+    @GetMapping("/testConcurrent")
+    public ResponseEntity<String> testConcurrent() throws InterruptedException {
+        String result = openAiService.testConcurrent();
+        Thread.sleep(1000);
+        return ResponseEntity.ok(result);
+    }
 
     /**
      * 对话相关
@@ -96,23 +105,20 @@ public class OpenAiController {
             @RequestParam boolean useTool, @RequestParam(required = false) String tagId) {
         SseEmitter emitter = new SseEmitter(0L);    // 0L表示永不过时
         // 独立线程执行远程api的请求，避免阻塞web服务
-        try (ExecutorService sseMvcExecutor = Executors.newSingleThreadExecutor()) {
-            Long userId = (Long) session.getAttribute(Constant.USER_SESSION_KEY);
-            log.info("用户 {} 开始请求流式生成，ChatId: {}", userId, chatId);
-            sseMvcExecutor.execute(() -> {
-                try {
-                    Long tagIdNum = tagId == null ? null : Long.parseLong(tagId);
-                    openAiService.generateStream(userId, Long.valueOf(chatId), model, message, emitter, useTool, tagIdNum);
-                } catch (Exception e) {
-                    log.error("在准备流式响应时发生错误. ChatId: {}", chatId, e);
-                    emitter.completeWithError(e);   // 如果正常执行，则service内会关闭emitter，因此异常情况下手动关闭
-                }
-            });
-        }
+        Long userId = (Long) session.getAttribute(Constant.USER_SESSION_KEY);
+        log.info("用户 {} 开始请求流式生成，ChatId: {}", userId, chatId);
+        taskExecutor.execute(() -> {
+            try {
+                Long tagIdNum = tagId == null ? null : Long.parseLong(tagId);
+                openAiService.generateStream(userId, Long.valueOf(chatId), model, message, emitter, useTool, tagIdNum);
+            } catch (Exception e) {
+                log.error("在准备流式响应时发生错误. ChatId: {}", chatId, e);
+                emitter.completeWithError(e);   // 如果正常执行，则service内会关闭emitter，因此异常情况下手动关闭
+            }
+        });
         log.info("SseEmitter for ChatId: {} 已返回给客户端", chatId);
+        openAiService.clearMessageCache(Long.valueOf(chatId));
         return emitter;
     }
-
-    // 还可以提供删除消息功能
 
 }

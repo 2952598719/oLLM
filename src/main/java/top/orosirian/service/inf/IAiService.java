@@ -8,6 +8,8 @@ import java.util.List;
 
 public interface IAiService {
 
+    String testConcurrent();
+
     /**
      * 对话相关
      */
@@ -25,5 +27,7 @@ public interface IAiService {
 //    ChatResponse generate(String model, String message);
 
     void generateStream(Long userId, Long chatId, String model, String message, SseEmitter emitter, boolean useTool, Long tagId);
+
+    void clearMessageCache(Long chatId);
 
 }

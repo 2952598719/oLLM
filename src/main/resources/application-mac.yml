@@ -9,16 +9,20 @@ server:
                 same-site: lax
 
 spring:
-    threads:
-      virtual:
-          enabled: true
+#    threads:
+#        virtual:
+#            enabled: true
+    cache:
+        type: redis
+        redis:
+            time-to-live: 600000
     datasource:
         driver-class-name: org.postgresql.Driver
         username: postgres
         password: postgres
         url: jdbc:postgresql://127.0.0.1:5432/ollm
         type: com.zaxxer.hikari.HikariDataSource
-        hikari:     # hikari连接池配置
+        hikari: # hikari连接池配置
             pool-name: HikariCP     # 连接池名
             minimum-idle: 5         # 最小空闲连接数
             idle-timeout: 600000    # 连接空闲10分钟后过期

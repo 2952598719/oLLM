@@ -1,10 +1,11 @@
 package top.orosirian.controller;
 
-import com.google.common.util.concurrent.RateLimiter;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RBucket;
+import org.redisson.api.RRateLimiter;
+import org.redisson.api.RateType;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -41,13 +42,12 @@ public class UserController {
     @Autowired
     ThirdPartyTools thirdPartyTools;
 
-    private static final RateLimiter captchaRateLimiter = RateLimiter.create(5.0);
-
-    private static final RateLimiter emailRateLimiter = RateLimiter.create(1.0 / 60);
-
     @GetMapping("/send_captcha")
     public void sendCaptcha(HttpSession session, HttpServletResponse response) throws IOException {
-        if (!captchaRateLimiter.tryAcquire()) {
+        RRateLimiter rateLimiter = redissonClient.getRateLimiter("captcha_rate_limiter");
+        // 设置速率：每1秒产生5个令牌
+        rateLimiter.trySetRate(RateType.OVERALL, 5, Duration.ofSeconds(1));
+        if (!rateLimiter.tryAcquire()) {
             response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
             response.getWriter().write("请求过于频繁");
             return;
@@ -67,12 +67,13 @@ public class UserController {
         }
     }
 
-    // 限流
     @InterceptorAnnotation(requireVerify = true)
     @GetMapping("/send_email")
     public ResponseEntity<String> sendEmail(@RequestParam @VerifyAnnotation(regex = VerificationType.EMAIL) String email,
                                     @RequestParam String type) {
-        if (!emailRateLimiter.tryAcquire()) {
+        RRateLimiter rateLimiter = redissonClient.getRateLimiter("email_rate_limiter:" + email);
+        rateLimiter.trySetRate(RateType.OVERALL, 1, Duration.ofSeconds(60));
+        if (!rateLimiter.tryAcquire()) {
             return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body("请求过于频繁");
         }
         // 根据操作类型校验邮箱状态
@@ -137,20 +138,5 @@ public class UserController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("登陆失败，用户名或密码错误");
         }
     }
-
-//    @GetMapping("/me")
-//    public ResponseEntity<String> checkLogin(HttpSession httpSession) {
-//        if (httpSession.getAttribute(Constant.USER_SESSION_KEY) != null) {
-//            return ResponseEntity.ok("用户处于登录状态");
-//        } else {
-//            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-//        }
-//    }
-
-//    @PostMapping("/quit")
-//    @InterceptorAnnotation(requireLogin = true)
-//    public ResponseEntity<String> quit(HttpSession session) {
-//
-//    }
 
 }
