@@ -17,6 +17,7 @@ public class CorsConfig {
                         .allowedOriginPatterns(
                                 "https://268616957698.preview.coze.site",
                                 "http://localhost:3000",
+                                "http://localhost:8080",
                                 "http://127.0.0.1:3000"
                         )
                         .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
