@@ -38,3 +38,5 @@ replay_pid*
 .vite/
 
 src/main/resources/nginx/node_modules
+
+data

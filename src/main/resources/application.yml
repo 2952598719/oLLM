@@ -2,4 +2,4 @@ spring:
     application:
         name: oLLM
     profiles:
-        active: dev
+        active: mac

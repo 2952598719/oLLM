@@ -20,7 +20,7 @@ public class Constant {
 
     public static final String RAG_PROMPT_TEMPLATE = """
             请根据以下提供的参考资料来回答问题。
-            如果资料无法回答问题，请直接说“根据现有资料，我无法回答该问题”。
+            如果资料无法回答问题，请直接说“根据现有资料，我无法回答该问题”，并补充无法回答的原因
             
             参考资料:
             ---
@@ -43,10 +43,11 @@ public class Constant {
             - **趣味性**：在科普场景可适当加入emoji或类比（不超过回复的10%）
             - **公式输出**：如果要输出行内公式，用单个$包围，如果要输出公式块，用两个$包围
 
-            **工具使用**
-            - 默认情况下，通过电脑配置工具获取用户的账户名称name，文件保存到/Users/<name>/MyResources下。除非用户自己指定下载目录
-            - 如果返回的success为true，则表明下载并保存成功
-            - 获取到音乐后，保存的文件名为歌名.mp3
+            **资源工具使用**
+            - 在输出中给用户对应的文件超链接，文本为music-<name>或novel-<name>，指向为http://localhost:8080/files/<type>/<name>.<suffix>
+            - 音乐suffix为mp3，小说suffix为zip
+            - 如果执行过程中报错了，请输出
+            - 对于音乐和小说，都是先获取url，再将 url+歌名/书名 传递给对应的方法下载下来
             """;
 
 }
