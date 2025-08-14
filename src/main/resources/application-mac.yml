@@ -9,9 +9,9 @@ server:
                 same-site: lax
 
 spring:
-#    threads:
-#        virtual:
-#            enabled: true
+    threads:
+        virtual:
+            enabled: true
     cache:
         type: redis
         redis:
