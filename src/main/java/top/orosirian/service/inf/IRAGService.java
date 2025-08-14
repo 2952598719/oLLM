@@ -1,19 +1,18 @@
 package top.orosirian.service.inf;
 
-import org.springframework.web.multipart.MultipartFile;
+import org.springframework.http.codec.multipart.FilePart;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 import top.orosirian.model.Response.TagResponseDTO;
-
-import java.util.List;
-import java.util.concurrent.CompletableFuture;
 
 public interface IRAGService {
 
-    List<TagResponseDTO> queryRagTagList(Long userId);
+    Flux<TagResponseDTO> queryRagTagList(Long userId);
 
-    void createTag(Long userId, Long tagId, String tagName);
+    Mono<Void> createTag(Long userId, Long tagId, String tagName);
 
-    CompletableFuture<Boolean> uploadFile(Long userId, Long tagId, List<MultipartFile> files);
+    Mono<Boolean> uploadFile(Long userId, Long tagId, Flux<FilePart> files);
 
-    CompletableFuture<Integer> analyzeGitRepository(Long userId, Long tagId, String repoUrl, String userName, String token) throws Exception;
+    Mono<Integer> analyzeGitRepository(Long userId, Long tagId, String repoUrl, String userName, String token);
 
 }

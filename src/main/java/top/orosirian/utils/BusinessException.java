@@ -3,6 +3,7 @@ package top.orosirian.utils;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 
 @EqualsAndHashCode(callSuper = true)
 @Data
@@ -21,6 +22,10 @@ public class BusinessException extends RuntimeException {
         super(message);
         this.httpStatus = status;
         this.message = message;
+    }
+
+    public ResponseEntity<String> toResponseEntity() {
+        return ResponseEntity.status(this.httpStatus).body(this.message);
     }
 
 }

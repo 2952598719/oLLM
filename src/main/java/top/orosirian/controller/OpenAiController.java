@@ -1,28 +1,35 @@
 package top.orosirian.controller;
 
 import cn.hutool.core.lang.Snowflake;
-import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.springframework.web.server.ServerWebExchange;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 import top.orosirian.model.Response.ChatResponseDTO;
 import top.orosirian.model.Response.MessageResponseDTO;
-import top.orosirian.model.annotation.InterceptorAnnotation;
 import top.orosirian.service.inf.IAiService;
+import top.orosirian.utils.BusinessException;
 import top.orosirian.utils.Constant;
 
 import java.util.List;
-import java.util.concurrent.Executor;
 
 @RestController
 @RequestMapping("/api/v1/openai")
 public class OpenAiController {
 
     private static final Logger log = LoggerFactory.getLogger(OpenAiController.class);
+
     @Autowired
     @Qualifier("OpenAiServiceImpl")
     private IAiService openAiService;
@@ -30,15 +37,10 @@ public class OpenAiController {
     @Autowired
     private Snowflake snowflake;
 
-    @Autowired
-    @Qualifier("taskExecutor") // 注入全局线程池
-    private Executor taskExecutor;
-
     @GetMapping("/testConcurrent")
-    public ResponseEntity<String> testConcurrent() throws InterruptedException {
-        String result = openAiService.testConcurrent();
-        Thread.sleep(1000);
-        return ResponseEntity.ok(result);
+    public Mono<ResponseEntity<String>> testConcurrent() {
+        return openAiService.testConcurrent()
+                .map(ResponseEntity::ok);
     }
 
     /**
@@ -47,40 +49,36 @@ public class OpenAiController {
     // 获取对话列表
     // http://localhost:8090/api/v1/openai/chat_list
     @GetMapping("/chat_list")
-    @InterceptorAnnotation(requireLogin = true)
-    public ResponseEntity<List<ChatResponseDTO>> chatList(HttpSession session) {
-        Long userId = (Long) session.getAttribute(Constant.USER_SESSION_KEY);
-        List<ChatResponseDTO> chatList = openAiService.getChatList(userId);
-        log.info("对话列表获取成功");
-        return ResponseEntity.ok(chatList);
+    public Mono<ResponseEntity<List<ChatResponseDTO>>> chatList(ServerWebExchange exchange) {
+        return exchange.getSession()
+                .mapNotNull(session -> (Long) session.getAttribute(Constant.USER_SESSION_KEY))
+                .flatMapMany(userId -> openAiService.getChatList(userId))
+                .collectList()
+                .map(ResponseEntity::ok);
     }
 
     // 创建对话
     // http://localhost:8090/api/v1/openai/create_chat?prefixString=xxx
     // prefixString为本次用户消息的前10个字
     @PostMapping("/create_chat")
-    @InterceptorAnnotation(requireLogin = true)
-    public ResponseEntity<Long> createChat(HttpSession session, @RequestParam String prefixString) {
+    public Mono<ResponseEntity<Long>> createChat(ServerWebExchange exchange, @RequestParam String prefixString) {
         Long chatId = snowflake.nextId();
-        Long userId = (Long) session.getAttribute(Constant.USER_SESSION_KEY);
-        openAiService.createChat(chatId, userId, prefixString);
-        log.info("对话创建成功");
-        return ResponseEntity.ok(chatId);
+        return exchange.getSession()
+                .mapNotNull(session -> (Long) session.getAttribute(Constant.USER_SESSION_KEY))
+                .flatMap(userId -> openAiService.createChat(chatId, userId, prefixString))
+                .then(Mono.just(ResponseEntity.ok(chatId)));
     }
 
     // 删除对话
     // http://localhost:8090/api/v1/openai/delete_chat?chatId=xxx
     @DeleteMapping("/delete_chat")
-    @InterceptorAnnotation(requireLogin = true)
-    public ResponseEntity<String> deleteChat(HttpSession session, @RequestParam String chatId) {
-        Long userId = (Long) session.getAttribute(Constant.USER_SESSION_KEY);
-        if (openAiService.deleteChat(Long.valueOf(chatId), userId)) {
-            log.info("对话删除成功");
-            return ResponseEntity.ok("删除成功");
-        } else {
-            return ResponseEntity.internalServerError().body("删除失败");
-        }
-
+    public Mono<ResponseEntity<String>> deleteChat(ServerWebExchange exchange, @RequestParam Long chatId) {
+        return exchange.getSession()
+                .mapNotNull(session -> (Long) session.getAttribute(Constant.USER_SESSION_KEY))
+                .flatMap(userId -> openAiService.deleteChat(chatId, userId))
+                .map(deleted -> deleted
+                        ? ResponseEntity.ok("删除成功")
+                        : ResponseEntity.status(HttpStatus.FORBIDDEN).body("删除失败或无权限"));
     }
 
     /**
@@ -89,36 +87,46 @@ public class OpenAiController {
     // 获取消息列表
     // http://localhost:8090/api/v1/openai/message_list?chatId=xxx
     @GetMapping("/message_list")
-    public ResponseEntity<List<MessageResponseDTO>> messageList(HttpSession session, @RequestParam String chatId) {
-        Long userId = (Long) session.getAttribute(Constant.USER_SESSION_KEY);
-        List<MessageResponseDTO> messageList = openAiService.getMessageList(Long.valueOf(chatId), userId);
-        log.info("消息列表获取成功");
-        return ResponseEntity.ok(messageList);
+    public Mono<ResponseEntity<List<MessageResponseDTO>>> messageList(ServerWebExchange exchange, @RequestParam Long chatId) {
+        return exchange.getSession()
+                .mapNotNull(session -> (Long) session.getAttribute(Constant.USER_SESSION_KEY))
+                .flatMapMany(userId -> openAiService.getMessageList(chatId, userId))
+                .collectList()
+                .map(ResponseEntity::ok);
     }
 
+
     // 发送并接收消息
-    // Flux是个异步数据流，不会不会立即关闭 HTTP 连接，而是将响应拆分成多个 ChatResponse 片段并持续发送
     // http://localhost:8090/api/v1/ollama/generate_stream?chatId=xxx&model=deepseek-chat&message=xxx
-    @GetMapping("/generate_stream")
-    public SseEmitter generateStream(HttpSession session,
+    @GetMapping(value = "/generate_stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<ServerSentEvent<ChatResponse>> generateStream(ServerWebExchange exchange,
             @RequestParam String chatId, @RequestParam String model, @RequestParam String message,
-            @RequestParam boolean useTool, @RequestParam(required = false) String tagId) {
-        SseEmitter emitter = new SseEmitter(0L);    // 0L表示永不过时
-        // 独立线程执行远程api的请求，避免阻塞web服务
-        Long userId = (Long) session.getAttribute(Constant.USER_SESSION_KEY);
-        log.info("用户 {} 开始请求流式生成，ChatId: {}", userId, chatId);
-        taskExecutor.execute(() -> {
-            try {
-                Long tagIdNum = tagId == null ? null : Long.parseLong(tagId);
-                openAiService.generateStream(userId, Long.valueOf(chatId), model, message, emitter, useTool, tagIdNum);
-            } catch (Exception e) {
-                log.error("在准备流式响应时发生错误. ChatId: {}", chatId, e);
-                emitter.completeWithError(e);   // 如果正常执行，则service内会关闭emitter，因此异常情况下手动关闭
-            }
-        });
-        log.info("SseEmitter for ChatId: {} 已返回给客户端", chatId);
-        openAiService.clearMessageCache(Long.valueOf(chatId));
-        return emitter;
+            @RequestParam boolean useTool, @RequestParam(required = false) Long tagId) {
+
+        return exchange.getSession()
+                .mapNotNull(session -> (Long) session.getAttribute(Constant.USER_SESSION_KEY))
+                .flatMapMany(userId ->
+                        openAiService.generateStream(userId, Long.valueOf(chatId), model, message, useTool, tagId)
+                                .map(chatResponse -> ServerSentEvent.builder(chatResponse).build())
+                                .doOnSubscribe(subscription -> log.info("用户 {} 开始SSE流。ChatId: {}", userId, chatId))
+                                .onErrorResume(e -> {
+                                    log.error("SSE流处理时发生错误. ChatId: {}", chatId, e);
+                                    String errorMessage = (e instanceof BusinessException) ? e.getMessage() : "流处理时发生内部错误";
+
+                                    // 创建一个代表错误的 AssistantMessage
+                                    AssistantMessage errorAssistantMessage = new AssistantMessage("Error: " + errorMessage);
+
+                                    // 将其包装在 Generation 和 ChatResponse 中 (已修正语法)
+                                    ChatResponse errorChatResponse = new ChatResponse(List.of(new Generation(errorAssistantMessage)));
+
+                                    // 将这个类型正确的 ChatResponse 对象包装在 ServerSentEvent 中返回
+                                    return Mono.just(
+                                            ServerSentEvent.builder(errorChatResponse)
+                                                    .event("error")
+                                                    .build()
+                                    );
+                                })
+                );
     }
 
 }

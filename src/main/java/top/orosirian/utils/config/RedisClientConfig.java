@@ -2,6 +2,7 @@ package top.orosirian.utils.config;
 
 import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;
+import org.redisson.api.RedissonReactiveClient;
 import org.redisson.codec.JsonJacksonCodec;
 import org.redisson.config.Config;
 import org.springframework.beans.factory.annotation.Value;
@@ -43,23 +44,28 @@ public class RedisClientConfig {
     @Value("${redis.sdk.config.keep-alive}")
     private Boolean keepAlive;   // 是否为长连接
 
-    @Bean("redissonClient")
-    public RedissonClient redissonCache() {
-        Config config = new Config();
-        config.setCodec(JsonJacksonCodec.INSTANCE);
-        config.useSingleServer()
-                .setAddress("redis://" + host + ":" + port)
-//                .setPassword(properties.getPassword())
-                .setConnectionPoolSize(poolSize)
-                .setConnectionMinimumIdleSize(minIdleSize)
-                .setIdleConnectionTimeout(idleTimeout)
-                .setConnectTimeout(connectTimeout)
-                .setRetryAttempts(retryAttempts)
-                .setRetryInterval(retryInterval)
-                .setPingConnectionInterval(pingInterval)
-                .setKeepAlive(keepAlive);
+//    @Bean("redissonClient")
+//    public RedissonClient redissonCache() {
+//        Config config = new Config();
+//        config.setCodec(JsonJacksonCodec.INSTANCE);
+//        config.useSingleServer()
+//                .setAddress("redis://" + host + ":" + port)
+////                .setPassword(properties.getPassword())
+//                .setConnectionPoolSize(poolSize)
+//                .setConnectionMinimumIdleSize(minIdleSize)
+//                .setIdleConnectionTimeout(idleTimeout)
+//                .setConnectTimeout(connectTimeout)
+//                .setRetryAttempts(retryAttempts)
+//                .setRetryInterval(retryInterval)
+//                .setPingConnectionInterval(pingInterval)
+//                .setKeepAlive(keepAlive);
+//
+//        return Redisson.create(config);
+//    }
 
-        return Redisson.create(config);
+    @Bean(destroyMethod = "shutdown")
+    public RedissonReactiveClient redissonReactiveClient(RedissonClient redissonClient) {
+        return redissonClient.reactive();
     }
 
 }
